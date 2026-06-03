@@ -1,0 +1,175 @@
+include: "rules/synth.smk"
+include: "rules/kpc.smk"
+include: "rules/lambda.smk"
+include: "rules/cv.smk"
+include: "rules/onepc.smk"
+include: "rules/coarseL2.smk"
+include: "rules/onepcL2.smk"
+include: "rules/lambda_compare.smk"
+include: "rules/methods_compare.smk"
+include: "rules/multitarget.smk"
+include: "rules/causalchamber.smk"
+
+
+fig_er = expand(
+    "results/coarse/er_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_sf = expand(
+    "results/coarse/sf_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_scal = expand(
+    "results/coarse/scalability_{compare}.pdf",
+    compare=["ari_samp", "time_samp", "time_nodes"],
+)
+fig_exp1 = expand(
+    "results/kpc/exp1_density={density}_{metric}.pdf",
+    density=[0.2, 0.6],
+    metric=["fscore", "runtime"],
+)
+fig_exp2 = expand(
+    "results/kpc/exp2_pca={pca}_{metric}.pdf",
+    pca=["obs", "pooled"],
+    metric=["fscore", "runtime"],
+)
+fig_exp3 = expand(
+    "results/kpc/exp3_density={density}_pca={pca}.pdf",
+    density=[0.2, 0.5, 0.8],
+    pca=["obs", "pooled"],
+)
+fig_lambda = [
+    "results/lambda/lambda_samp_pca=obs.pdf",
+    "results/lambda/lambda_density_pca=obs.pdf",
+]
+fig_er_cv = expand(
+    "results/coarse_cv/er_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_sf_cv = expand(
+    "results/coarse_cv/sf_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_scal_cv = expand(
+    "results/coarse_cv/scalability_{compare}.pdf",
+    compare=["ari_samp", "time_samp", "time_nodes"],
+)
+fig_er_1pc = expand(
+    "results/coarse_1pc/er_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_sf_1pc = expand(
+    "results/coarse_1pc/sf_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_scal_1pc = expand(
+    "results/coarse_1pc/scalability_{compare}.pdf",
+    compare=["ari_samp", "time_samp", "time_nodes"],
+)
+fig_er_l2 = expand(
+    "results/coarseL2/er_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_sf_l2 = expand(
+    "results/coarseL2/sf_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_scal_l2 = expand(
+    "results/coarseL2/scalability_{compare}.pdf",
+    compare=["ari_samp", "time_samp", "time_nodes"],
+)
+fig_er_1pc_l2 = expand(
+    "results/1pcL2/er_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_sf_1pc_l2 = expand(
+    "results/1pcL2/sf_{metric}_ivn={num_intervs}.pdf",
+    metric=["ari", "fscore"],
+    num_intervs=[2, 5, 8],
+)
+fig_scal_1pc_l2 = expand(
+    "results/1pcL2/scalability_{compare}.pdf",
+    compare=["ari_samp", "time_samp", "time_nodes"],
+)
+fig_lambda_compare = expand(
+    "results/lambda_compare/{graph}_fscore_ivn={num_intervs}.pdf",
+    graph=["er", "sf"],
+    num_intervs=[2, 5, 8],
+)
+fig_methods_compare = expand(
+    "results/methods_compare/{graph}_p={p}_dens={d}_{metric}.pdf",
+    graph=["er"],
+    p=[10, 20, 50, 100],
+    d=[0.2, 0.5, 0.8],
+    metric=["fscore", "precision", "recall", "runtime_sec"],
+)
+# Multi-target experiment: validates that COARSE, COARSE-CV and COARSE-1PC
+# all recover the partition + DAG under intervention sets of size > 1. Three
+# figure families (per-tpi line plots, headline summary, per-method 3-panel
+# visualization). Sweep matrix defined in rules/multitarget.smk.
+fig_multitarget = (
+    expand(
+        "results/multitarget/{graph}_p={p}_dens={d}_tpi={tpi}_{metric}.pdf",
+        graph=["er"],
+        p=[10, 20, 50],
+        d=[0.2, 0.5],
+        tpi=["2", "3", "5", "1to5"],
+        metric=["fscore", "ari", "runtime_sec"],
+    )
+    + expand(
+        "results/multitarget/summary_{metric}.pdf",
+        metric=["fscore", "ari"],
+    )
+    + [
+        "results/multitarget/viz/coarse_multitarget.pdf",
+        "results/multitarget/viz/cv_multitarget.pdf",
+        "results/multitarget/viz/onepc_multitarget.pdf",
+    ]
+)
+fig_causalchamber = cc_outputs
+
+
+rule all:
+    input:
+        fig_er,
+        fig_sf,
+        fig_scal,
+        fig_exp1,
+        fig_exp2,
+        fig_exp3,
+        fig_lambda,
+        fig_er_cv,
+        fig_sf_cv,
+        fig_scal_cv,
+        fig_er_1pc,
+        fig_sf_1pc,
+        fig_scal_1pc,
+        fig_er_l2,
+        fig_sf_l2,
+        fig_scal_l2,
+        fig_er_1pc_l2,
+        fig_sf_1pc_l2,
+        fig_scal_1pc_l2,
+        fig_lambda_compare,
+        fig_methods_compare,
+        fig_multitarget,
+        fig_causalchamber,
+
+
+rule l2_all:
+    input:
+        fig_er_l2,
+        fig_sf_l2,
+        fig_scal_l2,
+        fig_er_1pc_l2,
+        fig_sf_1pc_l2,
+        fig_scal_1pc_l2,

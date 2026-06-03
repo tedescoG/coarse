@@ -1,0 +1,22 @@
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# build artifacts
+/dist/
+/build/
+*.egg-info/
+
+# uv
+.uv_cache/
+.venv/
+
+# snakemake experiments
+/src/expt/.snakemake/
+/src/expt/results/
+/src/expt/.uv_cache/
+
+# editor / OS
+.idea/
+.DS_Store
