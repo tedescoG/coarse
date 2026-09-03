@@ -96,17 +96,16 @@ def _fit_method(method: str, data_dict):
     t0 = time.perf_counter()
     if method == "coarse":
         model = COARSE().fit(
-            data_dict, alpha=1e-4, lambda_pen=1.0,
-            refine_test="welch", scale=True,
+            data_dict, alpha=1e-4, lambda_pen=1.0, refine_test="welch",
         )
     elif method == "cv":
         model = cv_coarse(
-            data_dict, lambda_pen=1.0, refine_test="welch", scale=True,
+            data_dict, lambda_pen=1.0, refine_test="welch",
         )
     elif method == "onepc":
         model = COARSE().fit(
             data_dict, alpha=1e-4, lambda_pen=1.0,
-            refine_test="welch", k=1, pca_pooled=False, scale=True,
+            refine_test="welch", k=1, pca_pooled=False,
         )
     else:
         raise ValueError(f"Unknown method '{method}'")

@@ -8,9 +8,6 @@
 # fit_oracle_repare.py (RePaRe). All three feed the existing evaluate.py with
 # distinct `method_label` params so the collected CSV carries the right
 # `method` column for the plot legend.
-#
-# `scale=False` everywhere (raw sempler data into all three) per the design
-# decision — diverges from production synth.smk's scale=True. Flag in writeup.
 
 data_path = "results/_data/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/seed={seed}/"
 coarse_oracle_path = "results/methods_compare/coarse/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/seed={seed}/"

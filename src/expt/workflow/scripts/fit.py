@@ -25,10 +25,6 @@ intervention_type = normalize_intervention_type(
 k_param = getattr(snakemake.params, "k", None)
 k = int(k_param) if k_param is not None else None
 pca_pooled = bool(getattr(snakemake.params, "pca_pooled", False))
-# Per-env z-score after centering. The kPC suite auto-enables this via the
-# `k is not None` branch in coarse.py:171, so leaving the default False here
-# is a no-op for fit_1pc; the full-COARSE rule (synth.smk) opts in explicitly.
-scale = bool(getattr(snakemake.params, "scale", False))
 
 data = np.load(snakemake.input.data, allow_pickle=True)
 data_dict = build_data_dict(data, data["targets"], intervention_type)
@@ -42,7 +38,6 @@ model.fit(
     refine_test=refine_test,
     k=k,
     pca_pooled=pca_pooled,
-    scale=scale,
 )
 model.fit_runtime_sec = time.perf_counter() - start
 

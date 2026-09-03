@@ -11,7 +11,6 @@ rule fit_cv:
         lambda_pen=1.0,
         refine_test="welch",
         intervention_type="soft",
-        scale=True,
     script:
         "../scripts/fit_cv.py"
 
@@ -72,8 +71,7 @@ rule plot_cv:
 #
 # Cap num_nodes at 100: at p=200 the synthetic LGANM data has deep multiplicative
 # chains producing near-exact linear dependencies inside large partition blocks
-# (122-155 features). Even after z-scoring (scale=True in rule fit_cv), the
-# train block-Σ is rank-deficient and Cholesky fails; 0/7 on-disk p=200 cells
+# (122-155 features). The train block-Σ is rank-deficient and Cholesky fails; 0/7 on-disk p=200 cells
 # admit a fully-finite all-folds α. Not an identifiable regime; matches the
 # spirit of the s > n guard.
 rule collect_scalability_cv:

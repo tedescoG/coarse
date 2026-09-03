@@ -21,7 +21,6 @@ rule fit:
         lambda_pen=1.0,
         refine_test="welch",
         intervention_type="soft",
-        scale=True,
     script:
         "../scripts/fit.py"
 
@@ -75,8 +74,7 @@ rule plot:
 
 # Cap num_nodes at 100: at p=200 the synthetic LGANM data has deep multiplicative
 # chains producing near-exact linear dependencies inside large partition blocks
-# (122-155 features). Even after the per-env z-score (scale=True in rule fit),
-# Cholesky of the block-Σ̂ fails and the BIC scorer short-circuits to -inf, which
+# (122-155 features). Cholesky of the block-Σ̂ fails and the BIC scorer short-circuits to -inf, which
 # COARSE silently saves as a degenerate (0-edge, score=-inf) model. The kPC
 # scalability sweeps stay at p=200 because SVD projects each block to k_j dims.
 rule collect_scalability:

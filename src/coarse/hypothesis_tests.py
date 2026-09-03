@@ -1,7 +1,12 @@
-"""Algorithm 1 (RefineAux) — two-sample tests build the distributional-descendant matrix M.
+"""Build the interventional descendant indicator matrix M.
 
-All test are exposed via TEST_REGISTRY and the
-`compute_M` dispatcher.
+Statical hypotheses tests:
+- Welch t-test
+- Kolmogorov-Smirnov test
+- Energy-distance test (dcor.homogeneity.energy_test)
+- Gaussian LRT (assumes Gaussian data)
+
+All test are exposed via TEST_REGISTRY and the `compute_M` dispatcher.
 """
 
 from __future__ import annotations
@@ -22,7 +27,7 @@ def welch_p(x: np.ndarray, y: np.ndarray) -> float:
 
 def gaussian_lrt_p(x: np.ndarray, y: np.ndarray) -> float:
     """Gaussian likelihood-ratio test p-value for
-    `H0: x, y come from the same N(mu, sigma^2)`  vs  separate normals.
+    `H0: x, y come from the same N(mu, sigma^2)`  vs  different normals.
     """
     m_x = x.size
     m_y = y.size
@@ -93,6 +98,10 @@ def _normalize_env_data(env_value: Any) -> np.ndarray:
     arr = np.ascontiguousarray(arr, dtype=np.float64)
     if arr.ndim != 2:
         raise ValueError(f"env data must be 2-D, got shape {arr.shape}")
+    if arr.shape[0] < 2:
+        raise ValueError(f"env data needs at least 2 rows, got {arr.shape[0]}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("env data contains NaN or inf")
     return arr
 
 
@@ -119,11 +128,11 @@ def _vectorized_gaussian_lrt(X0: np.ndarray, Xe: np.ndarray) -> np.ndarray:
     # array column-wise; use the closed-form combined sample variance instead.
     total = m_x + m_y
     mu_c = (m_x * mu_x + m_y * mu_y) / total
-    # Var = E[X^2] - (E[X])^2 across the joined sample
-    e_x2_pooled = (
-        m_x * (s2_x + mu_x ** 2) + m_y * (s2_y + mu_y ** 2)
-    ) / total
-    s2_c = np.maximum(e_x2_pooled - mu_c ** 2, 1e-12)
+    s2_c = np.maximum(
+        (m_x * (s2_x + (mu_x - mu_c) ** 2) + m_y * (s2_y + (mu_y - mu_c) ** 2))
+        / total,
+        1e-12,
+    )
     ll_sep = (
         -0.5 * m_x * (np.log(2 * np.pi * s2_x) + 1)
         - 0.5 * m_y * (np.log(2 * np.pi * s2_y) + 1)

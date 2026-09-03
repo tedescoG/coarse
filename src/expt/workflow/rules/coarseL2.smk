@@ -12,7 +12,6 @@ rule fit_l2:
         lambda_pen=2.0,
         refine_test="welch",
         intervention_type="soft",
-        scale=True,
     script:
         "../scripts/fit.py"
 

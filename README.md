@@ -50,3 +50,17 @@ print(model.partition)  # the inferred partition Π_E
     downloads the third-party `causalchamber` dataset.
 
 All Snakemake outputs are saved in `src/expt/results/`. Decrease `--cores` (e.g. `10`) as needed.
+
+## Citing
+
+```bibtex
+@misc{alma99128284276405763,
+author = {Tedesco, Gaetano},
+copyright = {Unrestricted online access},
+keywords = {Causal Abstraction ; Coarsening ; Heterogeneous Data},
+language = {eng},
+publisher = {Department of Mathematical Sciences, Faculty of Science, University of Copenhagen},
+title = {Learning Causal Abstractions by Scoring Coarse Parents},
+year = {2026},
+}
+```

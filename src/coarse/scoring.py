@@ -1,13 +1,9 @@
 """Block-level multi-environment BIC scoring.
 
-The MLE convention here is `S = X^T X / n`.
-
-Centering is performed once per env in `coarse._run_score_phase` (coarse.py)
-before any scoring call; the functions in this module assume column-centered
-input.
+Assume column-centered input. The MLE convention here is `S = X^T X / n`.
 
 Sign convention: BIC is **maximized**. `pooled_block_bic_from_sigma` returns
-`2·ℓ̂ − λ·log(n_e)·d_j` so larger means better. Grow-shrink uses strict `>`.
+`2·ℓ̂ − λ·log(n_e)·d_j` so larger means better.
 """
 
 from __future__ import annotations

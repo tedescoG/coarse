@@ -1,31 +1,21 @@
-"""K-fold cross-validation for the M-step threshold α in COARSE.
+"""K-fold cross-validated COARSE class.
+
+K-fold cross-validation for the partition test threshold α in COARSE.
 
 For each α ∈ alpha_grid, for each fold k ∈ {1..K}:
   1. Fit COARSE on the (-k) train data at α → (partition, parent_sets).
   2. Build train-fold per-env Σ̂ via `compute_env_stats`; extract (B, Σ) per
      (env, block) via the shared Schur-complement helper from `scoring.py`.
-  3. Center the test fold with the *train* per-env mean (not the test mean —
-     centering with the test mean would mechanically shrink residuals and
-     bias L_CV(α)).
+  3. Center the test fold with the *train* per-env mean.
   4. Sum log N(X_test_block | X_test_parents @ B^T, Σ) over (env, block).
 
 Aggregate L_CV(α) = Σ_k L^{(k)}(α). Pick α̂ = argmax; refit COARSE on the full
 data at α̂. Forward COARSE attributes onto the COARSECV instance so downstream
 consumers that read `dag`, `score`, `fit_runtime_sec`, etc. work unchanged.
 
-The Gaussian log-likelihood retains the trace term (it is *not* constant
-across α here — the train-fitted Σ is not the test-fold MLE) and the
-``|block|·log(2π)`` constant (|block| varies with the partition, so dropping
-it would bias selection toward partitions with larger blocks).
-
-RNG contract (documented for reproducibility — tests pin this exactly):
-  self.rng.spawn(3) → [splitter_rng, refit_rng, inner_root_rng]
-    - splitter_rng draws the per-env row permutations.
-    - refit_rng feeds the final full-data COARSE refit.
-    - inner_root_rng.spawn(|A|·K) reshape (|A|, K) → per-(α, fold) inner COARSE
-      RNGs. Spawned eagerly so that changing the α grid size does not reshuffle
-      folds or the refit.
-
+As both block size and covariance are not constant across alphas,
+the Gaussian log-likelihood retains the trace term and the
+``|block|·log(2π)`` constant.
 """
 
 from __future__ import annotations
@@ -158,8 +148,6 @@ def _evaluate_fold(
     refine_test: str,
     baseline_key: EnvKey,
     rng: np.random.Generator,
-    *,
-    scale: bool = False,
 ) -> float:
     """One (α, fold) cell of the CV loop.
 
@@ -168,15 +156,6 @@ def _evaluate_fold(
     block evaluation fails (singular train Σ_PaPa, non-PD train residual
     Σ, or empty test fold) — the principled-stats short-circuit matches the
     BIC scorer's ``-inf`` posture at ``scoring.py:151-154, 163-164``.
-
-    When ``scale=True`` the train fold is z-scored per env (after centering)
-    before building ``env_stats_train``, and the *same* train-derived (μ, σ)
-    are applied to the test fold. This is the CV mirror of ``COARSE.fit``'s
-    ``scale=True`` path (``coarse.py:171-175``); ``scale`` is also forwarded
-    to the inner ``COARSE.fit`` so the partition + parent-sets are produced
-    from the scaled BIC. The Jacobian of the per-env z-score is constant
-    across α (σ depends on data, not on the partition), so it shifts every
-    L_CV(α) by the same amount and argmax-selection is preserved.
     """
     model = COARSE(rng=rng).fit(
         train_dict,
@@ -184,24 +163,13 @@ def _evaluate_fold(
         lambda_pen=lambda_pen,
         refine_test=refine_test,
         baseline_key=baseline_key,
-        scale=scale,
     )
 
     # Centering contract: train means → applied to both train and test. Using
     # test-fold means here would mechanically shrink residuals and bias the
     # CV objective upward as α changes the partition.
     env_means = {ek: v.mean(axis=0, keepdims=True) for ek, v in train_dict.items()}
-    if scale:
-        env_sds: dict[EnvKey, np.ndarray] = {}
-        centered_train: dict[EnvKey, np.ndarray] = {}
-        for ek, v in train_dict.items():
-            c = v - env_means[ek]
-            sd = c.std(axis=0, keepdims=True)
-            env_sds[ek] = np.where(sd > 0.0, sd, 1.0)
-            centered_train[ek] = c / env_sds[ek]
-    else:
-        env_sds = None  # type: ignore[assignment]
-        centered_train = {ek: v - env_means[ek] for ek, v in train_dict.items()}
+    centered_train = {ek: v - env_means[ek] for ek, v in train_dict.items()}
     env_stats_train = compute_env_stats(centered_train)
 
     total = 0.0
@@ -217,8 +185,6 @@ def _evaluate_fold(
                 return -np.inf
 
             Xt_c = test_dict[ek] - env_means[ek]
-            if scale:
-                Xt_c = Xt_c / env_sds[ek]
             n_test = Xt_c.shape[0]
             X_test_parents = (
                 Xt_c[:, parent_idx]
@@ -270,7 +236,6 @@ class COARSECV:
         lambda_pen: float = 1.0,
         refine_test: str = "welch",
         baseline_key: EnvKey = "obs",
-        scale: bool = False,
     ) -> "COARSECV":
         cv_start = time.perf_counter()
 
@@ -301,7 +266,6 @@ class COARSECV:
                     refine_test,
                     baseline_key,
                     inner_rngs[i, k],
-                    scale=scale,
                 )
 
         sums = per_fold.sum(axis=1)
@@ -330,7 +294,6 @@ class COARSECV:
             lambda_pen=lambda_pen,
             refine_test=refine_test,
             baseline_key=baseline_key,
-            scale=scale,
         )
 
         self.alpha_grid = alpha_grid

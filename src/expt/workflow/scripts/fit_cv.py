@@ -23,12 +23,11 @@ refine_test = ("welch" if refine_param is None else str(refine_param)).lower()
 intervention_type = normalize_intervention_type(
     getattr(snakemake.params, "intervention_type", "soft")
 )
-scale = bool(getattr(snakemake.params, "scale", False))
 
 data = np.load(snakemake.input.data, allow_pickle=True)
 data_dict = build_data_dict(data, data["targets"], intervention_type)
 
-model = cv_coarse(data_dict, lambda_pen=lambda_pen, refine_test=refine_test, scale=scale)
+model = cv_coarse(data_dict, lambda_pen=lambda_pen, refine_test=refine_test)
 model.fit_runtime_sec = model.cv_runtime_sec
 
 with open(snakemake.output[0], "wb") as f:

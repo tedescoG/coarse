@@ -91,7 +91,6 @@ def main():
             n_folds=n_folds,
             lambda_pen=lambda_pen,
             refine_test="welch",
-            scale=False,
         )
         # Outer wall-clock includes the full CV loop (inner fits + refit).
         # `cv_runtime_sec` is the canonical "total work" figure — see

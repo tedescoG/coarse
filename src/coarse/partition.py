@@ -1,4 +1,4 @@
-"""Algorithm 2 (RefineTest) + Section 4.3 — partition + signature partial order.
+"""Compute partitions, support and candidate parents pool from M.
 
 `infer_partition` returns the row-class partition Π_E of M .
 `compute_supports` reads supp(π) from Definition 10 .

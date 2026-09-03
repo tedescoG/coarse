@@ -401,10 +401,8 @@ def test_pooled_block_bic_from_sigma_matches_public_path():
 
 def test_coarse_oracle_score_invariant_under_refactor():
     """Integration guard for the Tier-1 refactor. `COARSEOracle().fit(...).score`
-    must remain finite, agree across the two `scale` modes, and the inferred
-    DAG must still recover the chain A → B → C — confirming the
-    cache-derivation in `_run_score_phase` is consistent for both centered-only
-    and centered+Z-scored inputs."""
+    must remain finite and the inferred DAG must still recover the chain
+    A → B → C."""
     rng = np.random.default_rng(0)
     data_dict = {
         "obs": sample_chain_dataset(1500, rng),
@@ -420,19 +418,58 @@ def test_coarse_oracle_score_invariant_under_refactor():
     A = tuple(sorted({0, 1}))
     B = tuple(sorted({2, 3}))
     C = tuple(sorted({4, 5}))
-    for scale in (False, True):
-        m = COARSEOracle().fit(
-            partition=partition_true,
-            M=M_true,
-            env_order=["1", "2", "3"],
-            data_dict=data_dict,
-            scale=scale,
-        )
-        assert np.isfinite(m.score), f"score not finite at scale={scale}"
-        assert set(m.dag.nodes) == {A, B, C}, f"DAG nodes drift at scale={scale}"
-        assert set(m.dag.edges) == {(A, B), (B, C)}, (
-            f"DAG edges drift at scale={scale}: got {set(m.dag.edges)}"
-        )
+    m = COARSEOracle().fit(
+        partition=partition_true,
+        M=M_true,
+        env_order=["1", "2", "3"],
+        data_dict=data_dict,
+    )
+    assert np.isfinite(m.score)
+    assert set(m.dag.nodes) == {A, B, C}
+    assert set(m.dag.edges) == {(A, B), (B, C)}, set(m.dag.edges)
+
+
+def test_coarse_oracle_rejects_partition_inconsistent_with_M():
+    rng = np.random.default_rng(0)
+    data_dict = {
+        "obs": sample_chain_dataset(300, rng),
+        "1":   sample_chain_dataset(300, rng, shift_targets=(0, 1)),
+        "2":   sample_chain_dataset(300, rng, shift_targets=(2, 3)),
+        "3":   sample_chain_dataset(300, rng, shift_targets=(4, 5)),
+    }
+    M_true = np.array(
+        [[1, 0, 0], [1, 0, 0], [1, 1, 0], [1, 1, 0], [1, 1, 1], [1, 1, 1]],
+        dtype=bool,
+    )
+    merged = [frozenset({0, 1, 2, 3}), frozenset({4, 5})]
+    with pytest.raises(ValueError, match="row-class partition"):
+        COARSEOracle().fit(merged, M_true, ["1", "2", "3"], data_dict)
+
+
+@pytest.mark.parametrize("corrupt", ["nan", "one_row"])
+def test_fit_rejects_bad_input(corrupt):
+    rng = np.random.default_rng(0)
+    data_dict = {
+        "obs": sample_chain_dataset(200, rng),
+        "1":   sample_chain_dataset(200, rng, shift_targets=(0, 1)),
+    }
+    if corrupt == "nan":
+        data_dict["1"][3, 2] = np.nan
+    else:
+        data_dict["1"] = data_dict["1"][:1]
+    with pytest.raises(ValueError):
+        COARSE().fit(data_dict)
+
+
+def test_vectorized_gaussian_lrt_matches_scalar_large_offset():
+    from coarse.hypothesis_tests import _vectorized_gaussian_lrt, gaussian_lrt_p
+
+    rng = np.random.default_rng(0)
+    x = 1e7 + 1e-3 * rng.standard_normal(500)
+    y = 1e7 + 1e-3 * rng.standard_normal(500)
+    p_vec = _vectorized_gaussian_lrt(x[:, None], y[:, None])[0]
+    p_scalar = gaussian_lrt_p(x, y)
+    assert np.isclose(p_vec, p_scalar, rtol=1e-4), (p_vec, p_scalar)
 
 
 # ---------------------------------------------------------------------------
@@ -706,24 +743,26 @@ def test_kpc_coarse_backward_compat():
     """k=None must give identical DAG and score to standard COARSE."""
     data_dict, partition, M, env_order = _chain_oracle_fixtures()
     std = COARSEOracle(rng=np.random.default_rng(0)).fit(
-        partition, M, env_order, data_dict, scale=True,
+        partition, M, env_order, data_dict,
     )
     pca = COARSEOracle(rng=np.random.default_rng(0)).fit(
-        partition, M, env_order, data_dict, scale=True, k=None,
+        partition, M, env_order, data_dict, k=None,
     )
     assert set(std.dag.edges) == set(pca.dag.edges)
     np.testing.assert_allclose(std.score, pca.score, rtol=1e-12)
 
 
 def test_kpc_coarse_full_rank_matches_standard():
-    """When k >= max block size, PCA is a rotation and BIC is invariant."""
+    """When k >= max block size, PCA is a rotation and BIC is invariant.
+    The kPC path z-scores internally, so the standard fit gets pre-z-scored data."""
     data_dict, partition, M, env_order = _chain_oracle_fixtures()
     max_block = max(len(b) for b in partition)
+    scaled = {ek: (X - X.mean(0)) / X.std(0) for ek, X in data_dict.items()}
     std = COARSEOracle(rng=np.random.default_rng(0)).fit(
-        partition, M, env_order, data_dict, scale=True,
+        partition, M, env_order, scaled,
     )
     pca = COARSEOracle(rng=np.random.default_rng(0)).fit(
-        partition, M, env_order, data_dict, scale=True, k=max_block,
+        partition, M, env_order, data_dict, k=max_block,
     )
     assert set(std.dag.edges) == set(pca.dag.edges)
     np.testing.assert_allclose(std.score, pca.score, rtol=1e-10)

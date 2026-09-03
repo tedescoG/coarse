@@ -1,4 +1,3 @@
-"""COARSE — block-level score-based causal discovery from soft interventions."""
 
 from coarse.coarse import COARSE, COARSEOracle
 from coarse.cv import COARSECV, DEFAULT_ALPHA_GRID, DEFAULT_N_FOLDS, cv_coarse

@@ -1,12 +1,7 @@
-"""Algorithm 3 (COARSE driver) — glue from data_dict to coarse DAG.
+"""COARSE and COARSEOracle classes
 
-`COARSE.fit` runs Algorithms 1 → 2 → signature analysis → Algorithm 4 per block,
-then assembles the result into an `nx.DiGraph`.
-
-`COARSEOracle.fit` skips Algorithms 1 and 2 (the partition and M are given) and
-runs only the score-based portion. Used by the unit test for Algorithm 3 in
-isolation, so a failure there localises to grow-shrink / DAG assembly rather
-than to test estimation.
+- COARSE: main class implementation of the algorithm. Estimate partition and coarse DAG from interventional data.
+- COARSEOracle: used for experiment on known partition. Recover edges by using the block level score-based grow-shrink.
 """
 
 from __future__ import annotations
@@ -133,7 +128,6 @@ def _run_score_phase(
     env_arrays: dict[EnvKey, np.ndarray],
     lambda_pen: float,
     rng: np.random.Generator,
-    scale: bool = False,
     k: int | None = None,
     baseline_key: EnvKey = "obs",
     pca_pooled: bool = False,
@@ -156,15 +150,15 @@ def _run_score_phase(
     grow/shrink moves. Must run after `compute_M` (Welch on per-env-centered
     data is degenerate); see hypothesis_tests.compute_M.
 
-    When ``scale`` is True (or ``k`` is not None), additionally Z-scores each
-    env's columns by dividing by per-env per-column standard deviation (after
-    centering). Scaling is mandatory for PCA — without it, high-variance
-    variables dominate the singular vectors.
+    When ``k`` is not None, additionally Z-scores each env's columns (after
+    centering): without it, high-variance variables dominate the singular
+    vectors. Plain COARSE never scales — rescaling cannot change the selected
+    parents, only the score value.
     """
     centered_env_arrays: dict[EnvKey, np.ndarray] = {
         ek: v - v.mean(axis=0, keepdims=True) for ek, v in env_arrays.items()
     }
-    if scale or k is not None:
+    if k is not None:
         for ek, v in centered_env_arrays.items():
             sigma = v.std(axis=0, keepdims=True)
             sigma = np.where(sigma > 0.0, sigma, 1.0)
@@ -258,7 +252,6 @@ class COARSE:
         lambda_pen: float = 1.0,
         refine_test: str = "welch",
         baseline_key: EnvKey = "obs",
-        scale: bool = False,
         k: int | None = None,
         pca_pooled: bool = False,
     ) -> "COARSE":
@@ -285,7 +278,7 @@ class COARSE:
         # Signature analysis + Algorithm 4 grow-shrink per block
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
             partition, M, env_arrays, lambda_pen, rng_gs,
-            scale=scale, k=k, baseline_key=baseline_key, pca_pooled=pca_pooled,
+            k=k, baseline_key=baseline_key, pca_pooled=pca_pooled,
         )
 
         dag = _materialize_dag(partition, parent_sets)
@@ -304,7 +297,6 @@ class COARSE:
             "alpha": alpha,
             "lambda_pen": lambda_pen,
             "refine_test": refine_test,
-            "scale": scale,
             "k": k,
             "pca_pooled": pca_pooled,
             "num_parts": len(partition),
@@ -337,10 +329,8 @@ class COARSE:
 
 
 class COARSEOracle:
-    """Algorithm 3 in isolation — partition + M are provided as inputs.
-
-    Useful for unit-testing the grow-shrink + DAG-assembly half of COARSE
-    without the noise from Algorithms 1 and 2.
+    """Run COARSE with both partition and M provided as inputs.
+    Used for experiments focused solely on edge recovery.
     """
 
     def __init__(self, rng: np.random.Generator | None = None) -> None:
@@ -354,21 +344,23 @@ class COARSEOracle:
         data_dict: dict[EnvKey, Any],
         lambda_pen: float = 1.0,
         baseline_key: EnvKey = "obs",
-        scale: bool = False,
         k: int | None = None,
         pca_pooled: bool = False,
     ) -> "COARSEOracle":
         start = time.perf_counter()
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
+        M = np.asarray(M, dtype=bool)
+        if set(partition) != set(infer_partition(M)):
+            raise ValueError("partition must be the row-class partition of M")
         rng_gs = self.rng.spawn(1)[0]
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
-            partition, np.asarray(M, dtype=bool), env_arrays, lambda_pen, rng_gs,
-            scale=scale, k=k, baseline_key=baseline_key, pca_pooled=pca_pooled,
+            partition, M, env_arrays, lambda_pen, rng_gs,
+            k=k, baseline_key=baseline_key, pca_pooled=pca_pooled,
         )
         dag = _materialize_dag(partition, parent_sets)
 
         self.partition = partition
-        self.M = np.asarray(M, dtype=bool)
+        self.M = M
         self.env_order = list(env_order)
         self.supports = supports
         self.candidate_pools = candidate_pools
@@ -377,6 +369,14 @@ class COARSEOracle:
         self.dag = dag
         self.score = score
         self.num_features = env_arrays[baseline_key].shape[1]
+        self.fit_metadata = {
+            "lambda_pen": lambda_pen,
+            "k": k,
+            "pca_pooled": pca_pooled,
+            "num_parts": len(partition),
+            "num_edges": dag.number_of_edges(),
+            "score": score,
+        }
         self.fit_runtime_sec = time.perf_counter() - start
         return self
 

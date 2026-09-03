@@ -72,9 +72,9 @@ rule generate_multitarget:
 
 # ---------------------------------------------------------------------------
 # Fit rules — three methods over the same multi-target dataset.
-#   - COARSE: synth.smk's production defaults (alpha=1e-4, lambda=1.0, welch,
-#     scale=True). This is the same configuration the existing main figures
-#     use, so multi-target results stay comparable.
+#   - COARSE: synth.smk's production defaults (alpha=1e-4, lambda=1.0, welch).
+#     This is the same configuration the existing main figures use, so
+#     multi-target results stay comparable.
 #   - COARSE-CV: cv.smk's defaults (cv_coarse internal alpha grid).
 #   - COARSE-1PC: onepc.smk's defaults (k=1, pca_pooled=False).
 # ---------------------------------------------------------------------------
@@ -89,7 +89,6 @@ rule fit_multitarget_coarse:
         lambda_pen=1.0,
         refine_test="welch",
         intervention_type="soft",
-        scale=True,
     script:
         "../scripts/fit.py"
 
@@ -103,7 +102,6 @@ rule fit_multitarget_cv:
         lambda_pen=1.0,
         refine_test="welch",
         intervention_type="soft",
-        scale=True,
     script:
         "../scripts/fit_cv.py"
 

@@ -1,11 +1,4 @@
-"""Algorithm 4 (GrowShrink) — block-level, multi-environment.
-
-This is the only score-based step in COARSE: given a target block π_j and the
-support-pruned candidate pool Z_j = Pa⋆(π_j), build P̂a_j by two consecutive
-phases — grow until stable, then shrink until stable — maximising the pooled
-block BIC.
-
-"""
+"""Score-based non-greed GrowShrink implementation for coarse nodes."""
 
 from __future__ import annotations
 
@@ -102,8 +95,6 @@ def grow_shrink(
     while True:
         done = True
         for pi_k in _shuffled(non_parents, rng):
-            if pi_k not in non_parents:
-                continue
             candidate_bic = _score(P + [pi_k])
             if candidate_bic > current_bic:
                 P.append(pi_k)
@@ -117,13 +108,10 @@ def grow_shrink(
     while True:
         done = True
         for pi_k in _shuffled(P, rng):
-            if pi_k not in P:
-                continue
             P_minus = [p for p in P if p != pi_k]
             candidate_bic = _score(P_minus)
             if candidate_bic > current_bic:
                 P = P_minus
-                non_parents.append(pi_k)  # parity with FLOP fit_parents.rs:51
                 current_bic = candidate_bic
                 done = False
         if done:
