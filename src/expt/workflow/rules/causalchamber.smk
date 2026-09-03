@@ -60,6 +60,7 @@ rule causalchamber_prepare:
 # COARSE — α × λ grid, soft interventions, no PCA on parent blocks.
 # ---------------------------------------------------------------------------
 
+
 rule causalchamber_coarse_grouped:
     input:
         **PREP_FILES,
@@ -74,7 +75,6 @@ rule causalchamber_coarse_grouped:
         lambdas=LAMBDAS,
         mode="grouped",
         k="None",
-        pca_pooled=False,
     script:
         "../scripts/causalchamber_coarse.py"
 
@@ -93,14 +93,14 @@ rule causalchamber_coarse_ungrouped:
         lambdas=LAMBDAS,
         mode="ungrouped",
         k="None",
-        pca_pooled=False,
     script:
         "../scripts/causalchamber_coarse.py"
 
 
 # ---------------------------------------------------------------------------
-# COARSE-1PC — same α × λ grid, k=1, obs-only PCA basis.
+# COARSE-1PC — same α × λ grid, k=1.
 # ---------------------------------------------------------------------------
+
 
 rule causalchamber_onepc_grouped:
     input:
@@ -116,7 +116,6 @@ rule causalchamber_onepc_grouped:
         lambdas=LAMBDAS,
         mode="grouped",
         k=1,
-        pca_pooled=False,
     script:
         "../scripts/causalchamber_coarse.py"
 
@@ -135,14 +134,13 @@ rule causalchamber_onepc_ungrouped:
         lambdas=LAMBDAS,
         mode="ungrouped",
         k=1,
-        pca_pooled=False,
     script:
         "../scripts/causalchamber_coarse.py"
 
 
 # ---------------------------------------------------------------------------
 # COARSE-CV — λ-only outer sweep; α selected internally by 5-fold CV from
-# DEFAULT_ALPHA_GRID (coarse.cv.DEFAULT_ALPHA_GRID). k=None, pca_pooled=False.
+# DEFAULT_ALPHA_GRID (coarse.cv.DEFAULT_ALPHA_GRID). k=None.
 # ---------------------------------------------------------------------------
 
 CV_ALPHA_GRID = [1e-4, 1e-3, 1e-2, 0.05, 0.1]
@@ -189,6 +187,7 @@ rule causalchamber_cv_ungrouped:
 # RePaRe — α × β grid, native GnIES-on-expanded score selection.
 # ---------------------------------------------------------------------------
 
+
 rule causalchamber_repare_grouped:
     input:
         **PREP_FILES,
@@ -226,6 +225,7 @@ rule causalchamber_repare_ungrouped:
 # ---------------------------------------------------------------------------
 # Aggregator — produces the 4 headline artifacts.
 # ---------------------------------------------------------------------------
+
 
 rule causalchamber_aggregate:
     input:

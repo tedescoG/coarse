@@ -61,5 +61,5 @@ fig.legend(
     frameon=False, fontsize="small", title_fontsize="small",
 )
 plt.tight_layout()
-plt.savefig(snakemake.output.obs, bbox_inches="tight", pad_inches=0.02)
+plt.savefig(snakemake.output.pdf, bbox_inches="tight", pad_inches=0.02)
 plt.close()

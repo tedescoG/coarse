@@ -25,24 +25,17 @@ fig_scal = expand(
     "results/coarse/scalability_{compare}.pdf",
     compare=["ari_samp", "time_samp", "time_nodes"],
 )
-fig_exp1 = expand(
-    "results/kpc/exp1_density={density}_{metric}.pdf",
-    density=[0.2, 0.6],
-    metric=["fscore", "runtime"],
-)
 fig_exp2 = expand(
-    "results/kpc/exp2_pca={pca}_{metric}.pdf",
-    pca=["obs", "pooled"],
+    "results/kpc/exp2_{metric}.pdf",
     metric=["fscore", "runtime"],
 )
 fig_exp3 = expand(
-    "results/kpc/exp3_density={density}_pca={pca}.pdf",
+    "results/kpc/exp3_density={density}.pdf",
     density=[0.2, 0.5, 0.8],
-    pca=["obs", "pooled"],
 )
 fig_lambda = [
-    "results/lambda/lambda_samp_pca=obs.pdf",
-    "results/lambda/lambda_density_pca=obs.pdf",
+    "results/lambda/lambda_samp.pdf",
+    "results/lambda/lambda_density.pdf",
 ]
 fig_er_cv = expand(
     "results/coarse_cv/er_{metric}_ivn={num_intervs}.pdf",
@@ -143,7 +136,6 @@ rule all:
         fig_er,
         fig_sf,
         fig_scal,
-        fig_exp1,
         fig_exp2,
         fig_exp3,
         fig_lambda,

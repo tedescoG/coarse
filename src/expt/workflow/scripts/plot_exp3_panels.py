@@ -1,11 +1,11 @@
 """Per-panel renders of the Experiment-3 scalability grid.
 
 `plot_exp3.py` packs nine panels (3 metrics x 3 methods) into one 3x3 PDF per
-(density, pca) cell. That is fine for a quick look but unreadable at thesis
-scale. This script emits each panel as its own standalone, full-size PDF for a
-single (density, pca) cell, into
+density. That is fine for a quick look but unreadable at thesis scale. This
+script emits each panel as its own standalone, full-size PDF for a single
+density, into
 
-    results/kpc/exp3_density=<d>_pca=<pca>/
+    results/kpc/exp3_density=<d>/
 
 It reads the already-collected CSV (results/kpc/exp3_results.csv) and refits
 nothing. Hue is cast to an ordered categorical for the same reason as in
@@ -13,8 +13,8 @@ plot_exp3.py: a bare numeric `hue=` makes seaborn build a continuous colour
 legend with fabricated round tick values instead of the true discrete levels.
 
 Run directly:
-    uv run python workflow/scripts/plot_exp3_panels.py [density] [pca]
-    (defaults: density=0.2, pca=obs)
+    uv run python workflow/scripts/plot_exp3_panels.py [density]
+    (default: density=0.2)
 """
 
 import sys
@@ -83,19 +83,18 @@ def _render_cell(cell: pd.DataFrame, out_dir: Path) -> int:
 
 def main() -> None:
     density = float(sys.argv[1]) if len(sys.argv) > 1 else 0.2
-    pca = sys.argv[2] if len(sys.argv) > 2 else "obs"
 
     df = pd.read_csv(CSV)
     coarse = df[df["method"] == "COARSE-oracle"]
     kpc = df[df["method"].str.startswith("kPC")]
     cell = pd.concat(
         [coarse[coarse["density"] == density],
-         kpc[(kpc["density"] == density) & (kpc["pca_pooled"] == pca)]],
+         kpc[kpc["density"] == density]],
         ignore_index=True,
     )
 
     dtag = "%g" % density  # 0.2 -> "0.2", matching the grid's filename convention
-    out_dir = Path(f"results/kpc/exp3_density={dtag}_pca={pca}")
+    out_dir = Path(f"results/kpc/exp3_density={dtag}")
     n = _render_cell(cell, out_dir)
     print(f"wrote {n} panels to {out_dir}/")
 

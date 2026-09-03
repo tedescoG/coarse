@@ -13,7 +13,6 @@ rule fit_1pc:
         refine_test="welch",
         intervention_type="soft",
         k=1,
-        pca_pooled=False,
     script:
         "../scripts/fit.py"
 
@@ -26,7 +25,6 @@ rule evaluate_1pc:
         onepc_path + "metrics.csv",
     params:
         method_label="COARSE-1PC",
-        pca_pooled="obs",
     script:
         "../scripts/evaluate.py"
 

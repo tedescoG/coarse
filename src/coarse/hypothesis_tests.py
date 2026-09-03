@@ -72,10 +72,9 @@ def energy_p(
 
 TEST_REGISTRY: dict[str, Callable[..., float]] = {
     "welch": welch_p,
-    "ttest": welch_p,  # alias matching RePaRe's `refine_test="ttest"` Snakemake param
     "ks": ks_p,
     "energy": energy_p,
-    "gaussian_lrt": gaussian_lrt_p,  # mirrors RePaRe's assume='gaussian' partition test
+    "gaussian_lrt": gaussian_lrt_p,  # Gaussian likelihood-ratio test (mean + variance)
 }
 
 
@@ -184,7 +183,7 @@ def compute_M(
             raise ValueError(
                 f"env {key!r} has {Xe.shape[1]} columns; baseline has {p}"
             )
-        if test_name_lc in ("welch", "ttest"):
+        if test_name_lc == "welch":
             pvals = _vectorized_welch(X0, Xe)
         elif test_name_lc == "gaussian_lrt":
             pvals = _vectorized_gaussian_lrt(X0, Xe)

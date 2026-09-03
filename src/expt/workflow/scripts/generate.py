@@ -88,7 +88,7 @@ def sample_intervention(target):
         case "hard" | "do":
             do_dict = {n: (100, 0.1) for n in nodes}
             return model.sample(samp_size, do_interventions=do_dict)
-        case "shift" | "soft":
+        case "soft":
             shift_dict = {n: (2.0, 1.0) for n in nodes}
             return model.sample(samp_size, shift_interventions=shift_dict)
         case _:

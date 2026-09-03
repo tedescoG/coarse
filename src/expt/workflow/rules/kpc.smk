@@ -3,7 +3,6 @@
 # Three experiment groups, all writing into the shared `results/kpc/` theme
 # folder. Models under `oracle/` and `kpc_oracle/` are reused across
 # experiments wherever their parameter grids overlap.
-#   Exp 1  — pooled vs observational PCA basis (kPC only).
 #   Exp 2  — kPC vs plain COARSE at low n (oracle baseline + kPC).
 #   Exp 3  — scalability across (density, num_nodes) for COARSE / kPC-k1 / kPC-k3.
 #
@@ -14,17 +13,17 @@
 
 data_path = "results/_data/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/seed={seed}/"
 oracle_path = "results/kpc/oracle/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/seed={seed}/"
-kpc_oracle_path = "results/kpc/kpc_oracle/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/k={k}/pca={pca}/seed={seed}/"
+kpc_oracle_path = "results/kpc/kpc_oracle/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/k={k}/seed={seed}/"
 
 
 wildcard_constraints:
     k=r"\d+",
-    pca=r"obs|pooled",
 
 
 # ---------------------------------------------------------------------------
-# Oracle rules — used by Exp 1 / 2 / 3.
+# Oracle rules — used by Exp 2 / 3.
 # ---------------------------------------------------------------------------
+
 
 rule fit_oracle:
     input:
@@ -46,7 +45,6 @@ rule evaluate_oracle:
         oracle_path + "metrics.csv",
     params:
         method_label="COARSE-oracle",
-        pca_pooled="na",
     script:
         "../scripts/evaluate.py"
 
@@ -71,65 +69,8 @@ rule evaluate_kpc_oracle:
         kpc_oracle_path + "metrics.csv",
     params:
         method_label=lambda wildcards: f"kPC-k{wildcards.k}-oracle",
-        pca_pooled=lambda wildcards: wildcards.pca,
     script:
         "../scripts/evaluate.py"
-
-
-# ---------------------------------------------------------------------------
-# Experiment 1 — pooled vs observational PCA basis (oracle partition).
-# ---------------------------------------------------------------------------
-
-EXP1_GRAPH = ["er"]
-EXP1_NODES = [30]
-EXP1_INTERVS = [5]
-EXP1_DENSITIES = [0.2, 0.6]
-EXP1_SAMP = [100, 200, 500, 1000]
-EXP1_K = [1, 3]
-EXP1_PCA = ["obs", "pooled"]
-EXP1_SEEDS = list(range(20))
-
-
-rule collect_exp1:
-    input:
-        expand(
-            kpc_oracle_path + "metrics.csv",
-            graph=EXP1_GRAPH,
-            num_nodes=EXP1_NODES,
-            num_intervs=EXP1_INTERVS,
-            density=EXP1_DENSITIES,
-            samp_size=EXP1_SAMP,
-            k=EXP1_K,
-            pca=EXP1_PCA,
-            seed=EXP1_SEEDS,
-        ),
-    output:
-        "results/kpc/exp1_results.csv",
-    script:
-        "../scripts/collect.py"
-
-
-rule plot_exp1:
-    input:
-        rules.collect_exp1.output[0],
-    output:
-        d02_fscore="results/kpc/exp1_density=0.2_fscore.pdf",
-        d02_runtime="results/kpc/exp1_density=0.2_runtime.pdf",
-        d06_fscore="results/kpc/exp1_density=0.6_fscore.pdf",
-        d06_runtime="results/kpc/exp1_density=0.6_runtime.pdf",
-    script:
-        "../scripts/plot_exp1.py"
-
-
-# ---------------------------------------------------------------------------
-# Convenience targets — one name per experiment that bundles every plot.
-# Run with e.g. `snakemake exp1 --cores all`. Builds everything end-to-end
-# (datasets, fits, evaluates, collect, plot) for the chosen experiment.
-# ---------------------------------------------------------------------------
-
-rule exp1:
-    input:
-        rules.plot_exp1.output,
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +83,6 @@ EXP2_INTERVS = [5]
 EXP2_DENSITY = [0.5]
 EXP2_SAMP = [100, 200, 500, 1000]
 EXP2_K = [1, 3]
-EXP2_PCA = ["obs", "pooled"]
 EXP2_SEEDS = list(range(20))
 
 
@@ -167,7 +107,6 @@ rule collect_exp2:
             density=EXP2_DENSITY,
             samp_size=EXP2_SAMP,
             k=EXP2_K,
-            pca=EXP2_PCA,
             seed=EXP2_SEEDS,
         ),
     output:
@@ -180,16 +119,14 @@ rule plot_exp2:
     input:
         rules.collect_exp2.output[0],
     output:
-        obs_fscore="results/kpc/exp2_pca=obs_fscore.pdf",
-        obs_runtime="results/kpc/exp2_pca=obs_runtime.pdf",
-        pooled_fscore="results/kpc/exp2_pca=pooled_fscore.pdf",
-        pooled_runtime="results/kpc/exp2_pca=pooled_runtime.pdf",
+        fscore="results/kpc/exp2_fscore.pdf",
+        runtime="results/kpc/exp2_runtime.pdf",
     script:
         "../scripts/plot_exp2.py"
 
 
 # ---------------------------------------------------------------------------
-# Experiment 3 — scalability per (density, pca) (oracle partition).
+# Experiment 3 — scalability per density (oracle partition).
 # ---------------------------------------------------------------------------
 
 EXP3_GRAPH = ["er"]
@@ -198,7 +135,6 @@ EXP3_DENSITIES = [0.2, 0.5, 0.8]
 EXP3_NODES = [10, 20, 50, 100, 200]
 EXP3_SAMP = [100, 1000, 10000, 100000]
 EXP3_K = [1, 3]
-EXP3_PCA = ["obs", "pooled"]
 EXP3_SEEDS = list(range(10))
 
 
@@ -221,7 +157,6 @@ rule collect_exp3:
             density=EXP3_DENSITIES,
             samp_size=EXP3_SAMP,
             k=EXP3_K,
-            pca=EXP3_PCA,
             seed=EXP3_SEEDS,
         ),
     output:
@@ -234,17 +169,20 @@ rule plot_exp3:
     input:
         rules.collect_exp3.output[0],
     output:
-        d02_obs="results/kpc/exp3_density=0.2_pca=obs.pdf",
-        d02_pooled="results/kpc/exp3_density=0.2_pca=pooled.pdf",
-        d05_obs="results/kpc/exp3_density=0.5_pca=obs.pdf",
-        d05_pooled="results/kpc/exp3_density=0.5_pca=pooled.pdf",
-        d08_obs="results/kpc/exp3_density=0.8_pca=obs.pdf",
-        d08_pooled="results/kpc/exp3_density=0.8_pca=pooled.pdf",
+        d02="results/kpc/exp3_density=0.2.pdf",
+        d05="results/kpc/exp3_density=0.5.pdf",
+        d08="results/kpc/exp3_density=0.8.pdf",
     script:
         "../scripts/plot_exp3.py"
 
 
-# Convenience targets — see `rule exp1` above.
+# ---------------------------------------------------------------------------
+# Convenience targets — one name per experiment that bundles every plot.
+# Run with e.g. `snakemake exp2 --cores all`. Builds everything end-to-end
+# (datasets, fits, evaluates, collect, plot) for the chosen experiment.
+# ---------------------------------------------------------------------------
+
+
 rule exp2:
     input:
         rules.plot_exp2.output,

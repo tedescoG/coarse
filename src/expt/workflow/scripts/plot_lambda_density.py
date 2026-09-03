@@ -47,5 +47,5 @@ for col_idx, d in enumerate(DENSITIES):
     ax.set_xlabel("λ")
     ax.set_ylabel("F-score ↑" if col_idx == 0 else "")
 plt.tight_layout()
-plt.savefig(snakemake.output.obs, bbox_inches="tight", pad_inches=0.02)
+plt.savefig(snakemake.output.pdf, bbox_inches="tight", pad_inches=0.02)
 plt.close()

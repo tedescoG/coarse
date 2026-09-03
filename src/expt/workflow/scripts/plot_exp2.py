@@ -1,9 +1,7 @@
 """Experiment 2 — kPC vs plain COARSE under the oracle partition.
 
-For each pca mode in {obs, pooled} produces F-score and runtime PDFs.
-X = samp_size (log), hue = method label (COARSE-oracle / kPC-k1-oracle /
-kPC-k3-oracle). The COARSE-oracle baseline (pca_pooled == "na") is duplicated
-into both subsets.
+Produces one F-score and one runtime PDF. X = samp_size (log), hue = method
+label (COARSE-oracle / kPC-k1-oracle / kPC-k3-oracle).
 """
 
 import matplotlib.pyplot as plt
@@ -46,10 +44,6 @@ def _plot(sub: pd.DataFrame, metric: str, ylabel: str, log_y: bool, path: str) -
     plt.close()
 
 
-for pca, fkey, rkey in [
-    ("obs", "obs_fscore", "obs_runtime"),
-    ("pooled", "pooled_fscore", "pooled_runtime"),
-]:
-    sub = pd.concat([coarse, kpc[kpc["pca_pooled"] == pca]], ignore_index=True)
-    _plot(sub, "fscore", "F-score ↑", False, snakemake.output[fkey])
-    _plot(sub, "runtime_sec", "runtime (s)", True, snakemake.output[rkey])
+sub = pd.concat([coarse, kpc], ignore_index=True)
+_plot(sub, "fscore", "F-score ↑", False, snakemake.output["fscore"])
+_plot(sub, "runtime_sec", "runtime (s)", True, snakemake.output["runtime"])

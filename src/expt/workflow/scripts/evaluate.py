@@ -1,15 +1,14 @@
 """Evaluate a fitted COARSE model against the ground-truth DAG.
 
-Adapted from RePaRe's `evaluate.py`. The only structural change is how we
-build the ground-truth partition: instead of calling RePaRe's
-`_get_totally_ordered_partition` on a dict of descendant masks, we stack those
-masks column-wise into an M_true matrix and pass it to our own
-`infer_partition` — same semantics, but the ground-truth pipeline now goes
-through the same partition machinery the model uses, so any partition-mismatch
-explains itself as a M-row mismatch rather than as a different algorithm.
+The ground-truth partition is built by stacking the per-intervention
+descendant masks column-wise into an M_true matrix and passing it to
+`infer_partition` — the same partition machinery the model uses, so any
+partition mismatch explains itself as an M-row mismatch rather than as a
+different algorithm.
 
-Output CSV schema is identical to RePaRe's so `collect.py` and `plot.py` work
-without modification.
+The output CSV schema is a cross-rule contract: `collect.py` and every plot
+script read it, and every method in the comparison is evaluated
+through this one script, distinguished only by `method_label`.
 """
 
 import pickle
@@ -79,7 +78,6 @@ except ZeroDivisionError:
 
 method_label = getattr(snakemake.params, "method_label", "COARSE")
 metric_type = getattr(snakemake.params, "metric_type", "partition")
-pca_pooled = getattr(snakemake.params, "pca_pooled", "na")
 lambda_pen = getattr(snakemake.params, "lambda_pen", np.nan)
 # `targets_per_interv` is only present on the multitarget.smk paths; for every
 # other rule file the wildcard is absent (those experiments are all
@@ -96,7 +94,6 @@ results = {
     "num_intervs": num_intervs,
     "graph_family": graph_family,
     "method": method_label,
-    "pca_pooled": pca_pooled,
     "metric_type": metric_type,
     "precision": precision,
     "recall": recall,

@@ -31,13 +31,12 @@ def _project_blocks(
     env_arrays: dict[EnvKey, np.ndarray],
     k: int,
     baseline_key: EnvKey,
-    pca_pooled: bool,
 ) -> tuple[dict[EnvKey, np.ndarray], list[Block], dict[Block, Block]]:
     """Per-block PCA projection for kPC-COARSE.
 
-    For each block π_j, computes the top-k_j right singular vectors from a
-    reference dataset (observational or pooled), then projects every
-    environment's block data onto that basis.  Returns projected env arrays
+    For each block π_j, computes the top-k_j right singular vectors from the
+    observational (baseline) environment, then projects every environment's
+    block data onto that basis.  Returns projected env arrays
     (n_e, K), the remapped partition, and the original→projected block map.
     """
     offset = 0
@@ -51,10 +50,7 @@ def _project_blocks(
         r_j = len(orig_idx)
         k_j = min(k, r_j)
 
-        if pca_pooled:
-            ref = np.vstack([v[:, orig_idx] for v in env_arrays.values()])
-        else:
-            ref = env_arrays[baseline_key][:, orig_idx]
+        ref = env_arrays[baseline_key][:, orig_idx]
 
         _, _, Vt = np.linalg.svd(ref, full_matrices=False)
         # SVD returns only min(n_ref, r_j) right singular vectors when the
@@ -83,10 +79,11 @@ def _normalize_data_dict(
     """Coerce every entry to a contiguous float64 (n_e, p) ndarray and
     validate that the baseline env is present.
 
-    Accepts the same input shapes as RePaRe's PartitionDagModelIvn.fit
-    (repare-0.2.0/src/repare/repare.py:86-110). Intervention targets and
-    intervention-type strings are accepted-and-ignored — COARSE does not use
-    them, but accepting them keeps drop-in API parity with RePaRe.
+    Each env value may be a bare 2-D array, a ``(data, targets, type)`` tuple,
+    or a ``{"data": ...}`` dict. Intervention targets and intervention-type
+    strings are accepted-and-ignored: COARSE reads only the data array
+    (Algorithm 1 detects distributional shifts, it does not use target
+    metadata).
     """
     if baseline_key not in data_dict:
         raise ValueError(
@@ -130,7 +127,6 @@ def _run_score_phase(
     rng: np.random.Generator,
     k: int | None = None,
     baseline_key: EnvKey = "obs",
-    pca_pooled: bool = False,
 ) -> tuple[
     dict[Block, frozenset[int]],
     dict[Block, list[Block]],
@@ -175,7 +171,7 @@ def _run_score_phase(
     # --- kPC-COARSE: per-block PCA projection ---------------------------------
     if k is not None:
         score_data, score_partition, block_map = _project_blocks(
-            partition, centered_env_arrays, k, baseline_key, pca_pooled,
+            partition, centered_env_arrays, k, baseline_key,
         )
         rev_map = {v: orig for orig, v in block_map.items()}
         score_pools: dict[Block, list[Block]] = {
@@ -237,7 +233,7 @@ class COARSE:
     parent_sets : dict[Block, list[Block]]         — P̂a_j per block
     dag : nx.DiGraph                               — nodes = tuple(sorted(block))
     score : float                                  — total Σ_j BIC_j
-    num_features : int                             — feature count p (replaces RePaRe's obs)
+    num_features : int                             — feature count p
     fit_metadata : dict[str, Any]
     fit_runtime_sec : float
     """
@@ -253,7 +249,6 @@ class COARSE:
         refine_test: str = "welch",
         baseline_key: EnvKey = "obs",
         k: int | None = None,
-        pca_pooled: bool = False,
     ) -> "COARSE":
         start = time.perf_counter()
 
@@ -278,7 +273,7 @@ class COARSE:
         # Signature analysis + Algorithm 4 grow-shrink per block
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
             partition, M, env_arrays, lambda_pen, rng_gs,
-            k=k, baseline_key=baseline_key, pca_pooled=pca_pooled,
+            k=k, baseline_key=baseline_key,
         )
 
         dag = _materialize_dag(partition, parent_sets)
@@ -298,7 +293,6 @@ class COARSE:
             "lambda_pen": lambda_pen,
             "refine_test": refine_test,
             "k": k,
-            "pca_pooled": pca_pooled,
             "num_parts": len(partition),
             "num_edges": dag.number_of_edges(),
             "score": score,
@@ -345,7 +339,6 @@ class COARSEOracle:
         lambda_pen: float = 1.0,
         baseline_key: EnvKey = "obs",
         k: int | None = None,
-        pca_pooled: bool = False,
     ) -> "COARSEOracle":
         start = time.perf_counter()
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
@@ -355,7 +348,7 @@ class COARSEOracle:
         rng_gs = self.rng.spawn(1)[0]
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
             partition, M, env_arrays, lambda_pen, rng_gs,
-            k=k, baseline_key=baseline_key, pca_pooled=pca_pooled,
+            k=k, baseline_key=baseline_key,
         )
         dag = _materialize_dag(partition, parent_sets)
 
@@ -372,7 +365,6 @@ class COARSEOracle:
         self.fit_metadata = {
             "lambda_pen": lambda_pen,
             "k": k,
-            "pca_pooled": pca_pooled,
             "num_parts": len(partition),
             "num_edges": dag.number_of_edges(),
             "score": score,

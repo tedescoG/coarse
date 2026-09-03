@@ -5,7 +5,7 @@
 #   `lambda_density`  — λ × density   at fixed samp_size.
 #
 # Reuses the same fit/evaluate scripts as kpc.smk (scripts/fit_oracle.py
-# handles both no-PCA and kPC variants via optional k/pca wildcards;
+# handles both no-PCA and kPC variants via the optional k wildcard;
 # scripts/evaluate.py), but writes to its own output namespace
 # `results/lambda/...` so the kpc/ theme is not invalidated.
 # Both sub-experiments share `oracle/` and `kpc_oracle/` model artifacts
@@ -18,18 +18,18 @@
 
 data_path = "results/_data/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/seed={seed}/"
 lambda_oracle_path = "results/lambda/oracle/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/lambda={lambda_pen}/seed={seed}/"
-lambda_kpc_oracle_path = "results/lambda/kpc_oracle/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/k={k}/pca={pca}/lambda={lambda_pen}/seed={seed}/"
+lambda_kpc_oracle_path = "results/lambda/kpc_oracle/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/k={k}/lambda={lambda_pen}/seed={seed}/"
 
 
 wildcard_constraints:
     k=r"\d+",
-    pca=r"obs|pooled",
     lambda_pen=r"\d+\.\d+",
 
 
 # ---------------------------------------------------------------------------
 # Fit + evaluate rules — scripts reused from kpc.smk unchanged.
 # ---------------------------------------------------------------------------
+
 
 rule fit_lambda_oracle:
     input:
@@ -63,7 +63,6 @@ rule evaluate_lambda_oracle:
         lambda_oracle_path + "metrics.csv",
     params:
         method_label="COARSE-oracle",
-        pca_pooled="na",
         lambda_pen=lambda w: float(w.lambda_pen),
     script:
         "../scripts/evaluate.py"
@@ -77,7 +76,6 @@ rule evaluate_lambda_kpc_oracle:
         lambda_kpc_oracle_path + "metrics.csv",
     params:
         method_label=lambda w: f"kPC-k{w.k}-oracle",
-        pca_pooled=lambda w: w.pca,
         lambda_pen=lambda w: float(w.lambda_pen),
     script:
         "../scripts/evaluate.py"
@@ -93,7 +91,6 @@ LAMBDA_SAMP_INTERVS = [5]
 LAMBDA_SAMP_DENSITY = [0.5]
 LAMBDA_SAMP_SAMP = [100, 500, 1000, 5000]
 LAMBDA_SAMP_K = [1, 3]
-LAMBDA_SAMP_PCA = ["obs"]
 LAMBDA_SAMP_LAMBDA = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
 LAMBDA_SAMP_SEEDS = list(range(20))
 
@@ -118,7 +115,6 @@ rule collect_lambda_samp:
             density=LAMBDA_SAMP_DENSITY,
             samp_size=LAMBDA_SAMP_SAMP,
             k=LAMBDA_SAMP_K,
-            pca=LAMBDA_SAMP_PCA,
             lambda_pen=LAMBDA_SAMP_LAMBDA,
             seed=LAMBDA_SAMP_SEEDS,
         ),
@@ -132,14 +128,14 @@ rule plot_lambda_samp:
     input:
         rules.collect_lambda_samp.output[0],
     output:
-        obs="results/lambda/lambda_samp_pca=obs.pdf",
+        pdf="results/lambda/lambda_samp.pdf",
     script:
         "../scripts/plot_lambda_samp.py"
 
 
 rule lambda_samp:
     input:
-        "results/lambda/lambda_samp_pca=obs.pdf",
+        "results/lambda/lambda_samp.pdf",
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +148,6 @@ LAMBDA_DENSITY_INTERVS = [5]
 LAMBDA_DENSITY_DENSITY = [0.2, 0.5, 0.8]
 LAMBDA_DENSITY_SAMP = [1000]
 LAMBDA_DENSITY_K = [1, 3]
-LAMBDA_DENSITY_PCA = ["obs"]
 LAMBDA_DENSITY_LAMBDA = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
 LAMBDA_DENSITY_SEEDS = list(range(20))
 
@@ -177,7 +172,6 @@ rule collect_lambda_density:
             density=LAMBDA_DENSITY_DENSITY,
             samp_size=LAMBDA_DENSITY_SAMP,
             k=LAMBDA_DENSITY_K,
-            pca=LAMBDA_DENSITY_PCA,
             lambda_pen=LAMBDA_DENSITY_LAMBDA,
             seed=LAMBDA_DENSITY_SEEDS,
         ),
@@ -191,21 +185,22 @@ rule plot_lambda_density:
     input:
         rules.collect_lambda_density.output[0],
     output:
-        obs="results/lambda/lambda_density_pca=obs.pdf",
+        pdf="results/lambda/lambda_density.pdf",
     script:
         "../scripts/plot_lambda_density.py"
 
 
 rule lambda_density:
     input:
-        "results/lambda/lambda_density_pca=obs.pdf",
+        "results/lambda/lambda_density.pdf",
 
 
 # ---------------------------------------------------------------------------
 # Top-level aggregator.
 # ---------------------------------------------------------------------------
 
+
 rule lambda_all:
     input:
-        "results/lambda/lambda_samp_pca=obs.pdf",
-        "results/lambda/lambda_density_pca=obs.pdf",
+        "results/lambda/lambda_samp.pdf",
+        "results/lambda/lambda_density.pdf",

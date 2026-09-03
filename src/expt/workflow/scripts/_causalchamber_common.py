@@ -6,9 +6,9 @@ without extra wiring. The leading underscore signals "module-local; do not
 import from outside `src/expt/workflow/scripts/`."
 
 All helpers operate on `nx.DiGraph` objects whose nodes are `tuple[int, ...]`
-(sorted indices into the kept-feature list) — the convention shared by
-`coarse.COARSE.dag` (see `coarse/coarse.py:248`) and
-`repare.repare.PartitionDagModelIvn.dag`.
+(sorted indices into the kept-feature list) — the `coarse.COARSE.dag`
+convention (see `_materialize_dag` in `coarse/coarse.py`), which every method
+in the experiment is coerced to before evaluation.
 """
 from __future__ import annotations
 
@@ -39,8 +39,8 @@ def build_data_dict(blocks: dict, targets: dict[str, set[int]]) -> dict:
 def partition_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph) -> dict:
     """Precision/recall/F1 of `model_dag`'s edges against the ground-truth
     partition graph, computed by collapsing `true_graph`'s atomic edges to the
-    coarsened nodes of `model_dag`. Verbatim port of
-    `repare-0.2.0/src/expt/workflow/scripts/causalchamber_repare.py:21-33`.
+    coarsened nodes of `model_dag`: a coarsened edge (pa → ch) is counted as
+    true iff some atomic edge (u → v) with u ∈ pa, v ∈ ch exists in `true_graph`.
     """
     true_edge_partition = nx.create_empty_copy(model_dag)
     node_list = list(true_edge_partition.nodes)

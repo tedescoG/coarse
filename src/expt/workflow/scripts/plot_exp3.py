@@ -1,9 +1,8 @@
-"""Experiment 3 — Scalability per (density, pca) under the oracle partition.
+"""Experiment 3 — Scalability per density under the oracle partition.
 
-For each (density, pca) cell produces a 3-row × 3-col grid PDF.
+For each density produces a 3-row × 3-col grid PDF.
 Rows: F-score-vs-samp_size, runtime-vs-samp_size, runtime-vs-num_nodes.
 Cols: COARSE-oracle, kPC-k1-oracle, kPC-k3-oracle.
-The COARSE-oracle baseline (pca_pooled == "na") appears in both pca subsets.
 """
 
 import matplotlib.pyplot as plt
@@ -87,17 +86,10 @@ def _plot_grid(cell: pd.DataFrame, path: str) -> None:
     plt.close()
 
 
-for density, pca, out_key in [
-    (0.2, "obs",    "d02_obs"),
-    (0.2, "pooled", "d02_pooled"),
-    (0.5, "obs",    "d05_obs"),
-    (0.5, "pooled", "d05_pooled"),
-    (0.8, "obs",    "d08_obs"),
-    (0.8, "pooled", "d08_pooled"),
-]:
+for density, out_key in [(0.2, "d02"), (0.5, "d05"), (0.8, "d08")]:
     cell = pd.concat(
         [coarse[coarse["density"] == density],
-         kpc[(kpc["density"] == density) & (kpc["pca_pooled"] == pca)]],
+         kpc[kpc["density"] == density]],
         ignore_index=True,
     )
     _plot_grid(cell, snakemake.output[out_key])

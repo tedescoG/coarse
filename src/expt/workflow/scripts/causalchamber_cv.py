@@ -148,7 +148,6 @@ def main():
             "recall": row["recall"],
             "f1": row["f1"],
             "k": None,
-            "pca_pooled": False,
             "n_folds": row["n_folds"],
             "alpha_grid": list(alpha_grid),
             "cv_log_lik_at_best": row["cv_log_lik_at_best"],

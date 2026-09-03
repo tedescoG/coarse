@@ -4,14 +4,14 @@
 # the edge-recovery half of each algorithm is benchmarked.
 #
 # Output namespace: `results/methods_compare/{coarse,onepc,repare}/...`.
-# Fits hit fit_oracle.py (COARSE / 1pc — kPC wildcards select 1pc) or the new
+# Fits hit fit_oracle.py (COARSE / 1pc — the k wildcard selects 1pc) or the new
 # fit_oracle_repare.py (RePaRe). All three feed the existing evaluate.py with
 # distinct `method_label` params so the collected CSV carries the right
 # `method` column for the plot legend.
 
 data_path = "results/_data/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/seed={seed}/"
 coarse_oracle_path = "results/methods_compare/coarse/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/seed={seed}/"
-onepc_oracle_path = "results/methods_compare/onepc/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/k={k}/pca={pca}/seed={seed}/"
+onepc_oracle_path = "results/methods_compare/onepc/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/k={k}/seed={seed}/"
 repare_oracle_path = "results/methods_compare/repare/graph={graph}/num_nodes={num_nodes}/num_intervs={num_intervs}/density={density}/samp_size={samp_size}/seed={seed}/"
 
 
@@ -19,7 +19,6 @@ wildcard_constraints:
     graph="er|sf",
     num_intervs=r"\d+",
     k=r"\d+",
-    pca=r"obs|pooled",
 
 
 GRAPHS = ["er"]
@@ -33,9 +32,10 @@ METRICS = ["fscore", "precision", "recall", "runtime_sec"]
 
 # ---------------------------------------------------------------------------
 # Fit rules — COARSE and 1pc reuse scripts/fit_oracle.py (1pc selects rank-1
-# PCA via the k/pca wildcards encoded in onepc_oracle_path). RePaRe uses the
+# PCA via the k wildcard encoded in onepc_oracle_path). RePaRe uses the
 # new scripts/fit_oracle_repare.py.
 # ---------------------------------------------------------------------------
+
 
 rule fit_methods_compare_coarse:
     input:
@@ -79,6 +79,7 @@ rule fit_methods_compare_repare:
 # permanent artefacts the collect/plot stage reads.
 # ---------------------------------------------------------------------------
 
+
 rule evaluate_methods_compare_coarse:
     input:
         data=data_path + "dataset.npz",
@@ -87,7 +88,6 @@ rule evaluate_methods_compare_coarse:
         coarse_oracle_path + "metrics.csv",
     params:
         method_label="COARSE",
-        pca_pooled="na",
         lambda_pen=1.0,
     script:
         "../scripts/evaluate.py"
@@ -101,7 +101,6 @@ rule evaluate_methods_compare_onepc:
         onepc_oracle_path + "metrics.csv",
     params:
         method_label="COARSE-1PC",
-        pca_pooled=lambda w: w.pca,
         lambda_pen=1.0,
     script:
         "../scripts/evaluate.py"
@@ -115,7 +114,6 @@ rule evaluate_methods_compare_repare:
         repare_oracle_path + "metrics.csv",
     params:
         method_label="RePaRe",
-        pca_pooled="na",
         lambda_pen=1.0,  # placeholder; RePaRe has no penalty, keep column non-NaN for CSV consistency
     script:
         "../scripts/evaluate.py"
@@ -124,6 +122,7 @@ rule evaluate_methods_compare_repare:
 # ---------------------------------------------------------------------------
 # Collect + plot.
 # ---------------------------------------------------------------------------
+
 
 rule collect_methods_compare:
     input:
@@ -144,7 +143,6 @@ rule collect_methods_compare:
             density=DENSITY,
             samp_size=SAMP_SIZE,
             k=[1],
-            pca=["obs"],
             seed=SEEDS,
         ),
         expand(

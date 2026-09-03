@@ -2,13 +2,11 @@
 """Preprocess CausalChamber light-tunnel data for the COARSE/1PC/RePaRe
 experiment.
 
-Lifted from `repare-0.2.0/src/expt/workflow/scripts/causalchamber_prepare.py`
-with one substantive change: the ground-truth partition labels are computed
-via `coarse.partition.infer_partition` (Algorithm 2 in the COARSE draft)
-instead of `repare.repare._get_totally_ordered_partition`. The two functions
-produce the same set of blocks (the block contents are determined by the
-descendant masks); they only differ in ordering, and ARI is permutation-
-invariant so downstream metrics are unaffected.
+The ground-truth partition labels are computed via
+`coarse.partition.infer_partition` (Algorithm 2 in the COARSE draft) from the
+descendant masks; block contents are determined by the masks alone, and ARI is
+permutation-invariant, so the block ordering does not affect downstream
+metrics.
 """
 
 import json

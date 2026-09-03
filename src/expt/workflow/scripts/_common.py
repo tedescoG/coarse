@@ -14,8 +14,8 @@ from coarse.partition import infer_partition
 
 
 def normalize_intervention_type(value: str) -> str:
-    """COARSE supports only soft (shift) interventions. Accept the 'shift'
-    alias for RePaRe parity; reject anything else explicitly.
+    """COARSE supports only soft (shift) interventions; reject anything
+    else explicitly.
 
     Replaces the silent hard/do fallthrough from the previous four `_map_type`
     copies — COARSE has no hard-intervention pathway (Algorithm 1's two-sample
@@ -23,11 +23,9 @@ def normalize_intervention_type(value: str) -> str:
     mislead the algorithm. A raise surfaces the misconfiguration at fit time.
     """
     lowered = str(value).lower()
-    if lowered in {"shift", "soft"}:
+    if lowered == "soft":
         return "soft"
-    raise ValueError(
-        f"COARSE supports only soft/shift interventions; got {value!r}"
-    )
+    raise ValueError(f"COARSE supports only soft interventions; got {value!r}")
 
 
 def parse_targets_per_interv(token):

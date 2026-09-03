@@ -1,8 +1,7 @@
 """Tests for the COARSE package.
 
 Each test maps to a specific Algorithm or section of the thesis draft so the
-implementation can be verified against the math piece-by-piece. The sempler
-integration test mirrors `repare-0.2.0/tests/test_repare.py::test_intervention`.
+implementation can be verified against the math piece-by-piece.
 """
 
 from __future__ import annotations
@@ -128,7 +127,7 @@ def test_algorithm_1_refineaux_population():
 
 
 def test_compute_M_requires_obs_baseline():
-    """Mirrors RePaRe's contract (repare.py:84): 'obs' is mandatory."""
+    """'obs' is the mandatory baseline environment."""
     with pytest.raises(ValueError, match="baseline"):
         compute_M({"1": np.zeros((10, 2))}, alpha=0.05)
 
@@ -141,18 +140,6 @@ def test_compute_M_rejects_inconsistent_p():
     }
     with pytest.raises(ValueError, match="columns"):
         compute_M(data_dict, alpha=0.05)
-
-
-def test_ttest_alias_matches_welch():
-    """The 'ttest' alias should produce identical M to 'welch'."""
-    rng = np.random.default_rng(1)
-    data_dict = {
-        "obs": rng.standard_normal((300, 2)),
-        "1": rng.standard_normal((300, 2)) + np.array([1.0, 0.0]),
-    }
-    M_welch, _ = compute_M(data_dict, alpha=0.05, test_name="welch")
-    M_alias, _ = compute_M(data_dict, alpha=0.05, test_name="ttest")
-    assert np.array_equal(M_welch, M_alias)
 
 
 # ---------------------------------------------------------------------------
@@ -599,11 +586,11 @@ def test_algorithm_3_coarse_oracle_chain():
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — sempler integration, mirrors repare/tests/test_repare.py:73-107
+# Test 5 — sempler end-to-end integration
 # ---------------------------------------------------------------------------
 def test_intervention_sempler():
-    """End-to-end smoke test on sempler-generated synthetic data. Uses the
-    same parameters as RePaRe's test_intervention so any drift is comparable."""
+    """End-to-end smoke test on sempler-generated synthetic data. The
+    generator parameters are fixed so any drift in recovery is detectable."""
     from sempler import LGANM
     from sempler.generators import dag_avg_deg, intervention_targets
     from sklearn.metrics import adjusted_rand_score
@@ -668,7 +655,7 @@ def test_intervention_sempler():
 
 
 # ---------------------------------------------------------------------------
-# Test 7 — expand_coarsened_dag (port of RePaRe's test, repare.py:349-375)
+# Test 7 — expand_coarsened_dag
 # ---------------------------------------------------------------------------
 def test_expand_coarsened_dag():
     model = COARSE()
@@ -790,16 +777,6 @@ def test_kpc_coarse_oracle_chain_recovery():
     assert set(model.dag.edges) == {(A, B), (B, C)}
 
 
-def test_kpc_coarse_pooled_runs():
-    """pca_pooled=True must run and produce a valid DAG."""
-    data_dict, partition, M, env_order = _chain_oracle_fixtures()
-    model = COARSEOracle(rng=np.random.default_rng(0)).fit(
-        partition, M, env_order, data_dict, k=1, pca_pooled=True,
-    )
-    assert np.isfinite(model.score)
-    assert model.dag.number_of_nodes() == 3
-
-
 def test_kpc_project_blocks_clamps_to_svd_rank():
     """When the reference matrix has fewer rows than the requested k_j,
     np.linalg.svd returns only min(n_ref, r_j) right singular vectors.
@@ -818,7 +795,7 @@ def test_kpc_project_blocks_clamps_to_svd_rank():
     }
     partition = [frozenset({0, 1, 2, 3}), frozenset({4, 5, 6, 7})]
     proj_arrays, proj_partition, block_map = _project_blocks(
-        partition, env_arrays, k=3, baseline_key="obs", pca_pooled=False,
+        partition, env_arrays, k=3, baseline_key="obs",
     )
 
     # Each block should have collapsed to 2 dims (rank of obs ref), not 3.
@@ -840,13 +817,4 @@ def test_kpc_project_blocks_clamps_to_svd_rank():
     for b in proj_partition:
         assert b == frozenset(range(offset, offset + len(b)))
         offset += len(b)
-
-    # And the pooled-mode path with the same shapes — there n_ref = 102, so
-    # SVD has full rank 4 and k_j hits the requested k=3 ceiling instead.
-    proj_arrays_p, proj_partition_p, _ = _project_blocks(
-        partition, env_arrays, k=3, baseline_key="obs", pca_pooled=True,
-    )
-    assert [len(b) for b in proj_partition_p] == [3, 3]
-    for arr in proj_arrays_p.values():
-        assert arr.shape[1] == 6
 

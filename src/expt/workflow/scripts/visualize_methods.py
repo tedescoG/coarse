@@ -105,7 +105,7 @@ def _fit_method(method: str, data_dict):
     elif method == "onepc":
         model = COARSE().fit(
             data_dict, alpha=1e-4, lambda_pen=1.0,
-            refine_test="welch", k=1, pca_pooled=False,
+            refine_test="welch", k=1,
         )
     else:
         raise ValueError(f"Unknown method '{method}'")

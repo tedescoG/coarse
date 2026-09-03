@@ -65,7 +65,6 @@ def main():
     mode = snakemake.params.mode
     k_param = snakemake.params.k
     k = None if k_param in (None, "None", "none", "") else int(k_param)
-    pca_pooled = bool(snakemake.params.pca_pooled)
 
     targets = select_targets(mode, group_targets, single_env_labels, name_to_idx)
     data_dict = build_data_dict(blocks, targets)
@@ -89,7 +88,6 @@ def main():
             alpha=alpha,
             lambda_pen=lambda_pen,
             k=k,
-            pca_pooled=pca_pooled,
             refine_test="welch",
         )
         fit_time = time.perf_counter() - start
@@ -142,7 +140,6 @@ def main():
             "recall": row["recall"],
             "f1": row["f1"],
             "k": k,
-            "pca_pooled": pca_pooled,
             "parts": parts,
             "edges": edges,
         }

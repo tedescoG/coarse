@@ -61,6 +61,7 @@ MT_SUMMARY_METRICS = ["fscore", "ari"]
 # absent → size=1 (single-target, existing behavior). Present here.
 # ---------------------------------------------------------------------------
 
+
 rule generate_multitarget:
     output:
         data_path + "dataset.npz",
@@ -76,8 +77,9 @@ rule generate_multitarget:
 #     This is the same configuration the existing main figures use, so
 #     multi-target results stay comparable.
 #   - COARSE-CV: cv.smk's defaults (cv_coarse internal alpha grid).
-#   - COARSE-1PC: onepc.smk's defaults (k=1, pca_pooled=False).
+#   - COARSE-1PC: onepc.smk's defaults (k=1).
 # ---------------------------------------------------------------------------
+
 
 rule fit_multitarget_coarse:
     input:
@@ -117,7 +119,6 @@ rule fit_multitarget_onepc:
         refine_test="welch",
         intervention_type="soft",
         k=1,
-        pca_pooled=False,
     script:
         "../scripts/fit.py"
 
@@ -127,6 +128,7 @@ rule fit_multitarget_onepc:
 # method_label. metrics.csv is NOT temp(): the collect rule reads it.
 # ---------------------------------------------------------------------------
 
+
 rule evaluate_multitarget_coarse:
     input:
         data=data_path + "dataset.npz",
@@ -135,7 +137,6 @@ rule evaluate_multitarget_coarse:
         coarse_path + "metrics.csv",
     params:
         method_label="COARSE",
-        pca_pooled="na",
         lambda_pen=1.0,
     script:
         "../scripts/evaluate.py"
@@ -149,7 +150,6 @@ rule evaluate_multitarget_cv:
         cv_path + "metrics.csv",
     params:
         method_label="COARSE-CV",
-        pca_pooled="na",
         lambda_pen=1.0,
     script:
         "../scripts/evaluate.py"
@@ -163,7 +163,6 @@ rule evaluate_multitarget_onepc:
         onepc_path + "metrics.csv",
     params:
         method_label="COARSE-1PC",
-        pca_pooled="obs",
         lambda_pen=1.0,
     script:
         "../scripts/evaluate.py"
@@ -172,6 +171,7 @@ rule evaluate_multitarget_onepc:
 # ---------------------------------------------------------------------------
 # Collect — concatenate all three methods' per-cell CSVs.
 # ---------------------------------------------------------------------------
+
 
 rule collect_multitarget:
     input:
@@ -218,6 +218,7 @@ rule collect_multitarget:
 # Filenames are parsed by plot_multitarget.py to recover filter keys.
 # ---------------------------------------------------------------------------
 
+
 rule plot_multitarget:
     input:
         rules.collect_multitarget.output[0],
@@ -251,10 +252,42 @@ rule plot_multitarget:
 # ---------------------------------------------------------------------------
 
 VIZ_CONFIGS = [
-    dict(graph="er", num_nodes=10, num_intervs=5, targets_per_interv="2",    density=0.2, samp_size=10000, seed=0),
-    dict(graph="er", num_nodes=10, num_intervs=5, targets_per_interv="3",    density=0.2, samp_size=10000, seed=0),
-    dict(graph="er", num_nodes=20, num_intervs=5, targets_per_interv="3",    density=0.2, samp_size=10000, seed=0),
-    dict(graph="er", num_nodes=10, num_intervs=5, targets_per_interv="1to5", density=0.5, samp_size=10000, seed=0),
+    dict(
+        graph="er",
+        num_nodes=10,
+        num_intervs=5,
+        targets_per_interv="2",
+        density=0.2,
+        samp_size=10000,
+        seed=0,
+    ),
+    dict(
+        graph="er",
+        num_nodes=10,
+        num_intervs=5,
+        targets_per_interv="3",
+        density=0.2,
+        samp_size=10000,
+        seed=0,
+    ),
+    dict(
+        graph="er",
+        num_nodes=20,
+        num_intervs=5,
+        targets_per_interv="3",
+        density=0.2,
+        samp_size=10000,
+        seed=0,
+    ),
+    dict(
+        graph="er",
+        num_nodes=10,
+        num_intervs=5,
+        targets_per_interv="1to5",
+        density=0.5,
+        samp_size=10000,
+        seed=0,
+    ),
 ]
 
 
@@ -274,6 +307,7 @@ rule visualize_multitarget:
 # ---------------------------------------------------------------------------
 # Convenience target — `snakemake multitarget_all` builds everything.
 # ---------------------------------------------------------------------------
+
 
 rule multitarget_all:
     input:
