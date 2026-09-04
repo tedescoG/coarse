@@ -28,15 +28,10 @@ from conftest import sample_chain_dataset
 
 
 # ---------------------------------------------------------------------------
-# Reference implementations moved from scoring.py / partition.py.
+# Reference implementations moved from scoring.py.
 # These operate on raw (n_e, p) arrays and serve as correctness oracles for
 # the production cached-covariance path.
 # ---------------------------------------------------------------------------
-def linear_extension(supports):
-    """Definition 11 — sort blocks by |supp| ascending (ties by min(block))."""
-    return sorted(supports.keys(), key=lambda b: (len(supports[b]), min(b)))
-
-
 def block_residual_covariance(X_block, X_parents):
     """Equation 11 — block residual covariance from raw arrays."""
     n_e = X_block.shape[0]
@@ -200,25 +195,19 @@ def test_compute_candidate_pools_handcoded():
     assert pools[frozenset({2})] == [frozenset({3})]
 
 
-def test_linear_extension_respects_supp_inclusion():
-    """A valid τ must place π_a before π_b whenever supp(π_a) ⊊ supp(π_b)."""
-    partition = infer_partition(_M_HANDCODED)
-    supports = compute_supports(_M_HANDCODED, partition)
-    tau = linear_extension(supports)
+def test_infer_partition_order_respects_supp_inclusion():
+    """`infer_partition` owns the block ordering τ: π_a must precede π_b
+    whenever supp(π_a) ⊊ supp(π_b)."""
+    tau = infer_partition(_M_HANDCODED)
     # block {3} (|supp|=0) must come first; the two |supp|=2 blocks come after,
     # in either order.
     assert tau[0] == frozenset({3})
     assert set(tau[1:]) == {frozenset({0, 1}), frozenset({2})}
 
-    # Verify the contract for an arbitrary chain pattern too.
-    chain_supports = {
-        frozenset({0}): frozenset({1, 2}),
-        frozenset({1}): frozenset({1}),
-        frozenset({2}): frozenset(),
-    }
-    chain_tau = linear_extension(chain_supports)
+    # Chain pattern: supp({2}) ⊊ supp({1}) ⊊ supp({0}).
+    M_chain = np.array([[1, 1], [1, 0], [0, 0]], dtype=bool)
+    chain_tau = infer_partition(M_chain)
     pos = {b: i for i, b in enumerate(chain_tau)}
-    # supp({2}) ⊊ supp({1}) ⊊ supp({0}), so τ must respect this ordering
     assert pos[frozenset({2})] < pos[frozenset({1})] < pos[frozenset({0})]
 
 
@@ -775,6 +764,26 @@ def test_kpc_coarse_oracle_chain_recovery():
     B = (2, 3)
     C = (4, 5)
     assert set(model.dag.edges) == {(A, B), (B, C)}
+
+
+def test_coarse_oracle_canonicalises_partition_order():
+    """COARSEOracle must not trust the caller's list order: τ, `partition`,
+    and the DAG must be identical whether the partition is passed in
+    canonical order or reversed."""
+    data_dict, partition, M, env_order = _chain_oracle_fixtures()
+    canonical = infer_partition(M)
+    fwd = COARSEOracle(rng=np.random.default_rng(0)).fit(
+        list(partition), M, env_order, data_dict,
+    )
+    rev = COARSEOracle(rng=np.random.default_rng(0)).fit(
+        list(reversed(partition)), M, env_order, data_dict,
+    )
+    assert fwd.partition == canonical
+    assert rev.partition == canonical
+    assert fwd.linear_extension_ == canonical
+    assert rev.linear_extension_ == canonical
+    assert set(fwd.dag.edges) == set(rev.dag.edges)
+    assert fwd.score == rev.score
 
 
 def test_kpc_project_blocks_clamps_to_svd_rank():
