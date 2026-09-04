@@ -1,6 +1,6 @@
 """Block-level multi-environment BIC scoring.
 
-Assume column-centered input. The MLE convention here is `S = X^T X / n`.
+Assume column-centered input and `S = X^T X / n`.
 
 Sign convention: BIC is **maximized**. `pooled_block_bic_from_sigma` returns
 `2·ℓ̂ − λ·log(n_e)·d_j` so larger means better.
@@ -17,7 +17,7 @@ from coarse.types import Block, EnvKey
 
 
 def parameter_count_d_j(r_j: int, s_j: int) -> int:
-    """Equation 20 — total free parameters per block.
+    """Return the total free parameters per block.
 
     d_j = r_j · s_j + r_j(r_j + 1) / 2
         = (regression entries in B_j^e)  +  (symmetric covariance entries in Σ_j^e)
@@ -53,8 +53,10 @@ class EnvStats(NamedTuple):
     """Per-environment summary statistics cached once per fit.
 
     `sigma` is the (p, p) sample covariance `(X.T @ X) / n_e` on column-centered
-    `X`; `n_e` is the row count of the underlying `X` (NOT `sigma.shape[0]`).
-    `log_n_e` is `log(n_e)`, precomputed to avoid redundant calls in the hot loop.
+    `X`;
+    `n_e` is the row count of the underlying `X`.
+    `log_n_e` is `log(n_e)`, precomputed.
+
     The caller is responsible for centering `X` before computing `sigma` — this
     container does not verify the centering invariant. See `compute_env_stats`.
     """
@@ -67,8 +69,7 @@ def compute_env_stats(
     data_dict: dict[EnvKey, np.ndarray],
 ) -> dict[EnvKey, EnvStats]:
     """Build per-env `EnvStats` from centered arrays. Called once per fit by
-    `_run_score_phase` after centering (and optional Z-scoring); the result is
-    then sliced by `_block_*_from_sigma` for every grow-shrink probe.
+    `_run_score_phase` after centering (and Z-scoring for PCA version).
     """
     return {
         k: EnvStats(
@@ -90,12 +91,12 @@ def _block_regression_from_sigma(
     """Schur-complement extraction of (B, Σ_residual) from precomputed `sigma`.
 
     Identity used:
-        Y = Σ_PaPa^{-1} Σ_jPa^T          (shape (s_j, r_j) — i.e. Bᵀ)
-        Σ_residual = Σ_jj − Σ_jPa Y      (Schur complement)
+        B^T = Σ_PaPa^{-1} Σ_jPa^T         (shape (s_j, r_j))
+        Σ_residual = Σ_jj − Σ_jPa B^T     (Schur complement)
 
     Returns
     -------
-    B : ndarray, shape (r_j, s_j)
+    B.T : ndarray, shape (r_j, s_j)
         Regression coefficients with X_block ≈ X_parents @ B.T. Shape
         ``(r_j, 0)`` when ``parent_idx.size == 0``.
     Sigma : ndarray, shape (r_j, r_j)
@@ -103,11 +104,10 @@ def _block_regression_from_sigma(
 
     Notes
     -----
-    Same Cholesky path as the previous inline computation in
-    ``_block_log_det_residual_from_sigma`` (BIC is byte-identical).  Surfacing
-    ``(B, Σ)`` here lets the CV evaluator reuse one well-tested code path
-    instead of duplicating the math; the BIC scorer just throws ``B`` away
-    and pipes ``Sigma`` into ``slogdet``.
+    Single shared Schur-complement path for the BIC scorer and the CV held-out
+    likelihood in ``cv.py``.
+    Raises `LinAlgError` from `cho_factor` when ``S_PaPa`` is not positive
+    definite.
     """
     if S_jj is None:
         S_jj = sigma[np.ix_(block_idx, block_idx)]
@@ -116,36 +116,9 @@ def _block_regression_from_sigma(
     S_jPa = sigma[np.ix_(block_idx, parent_idx)]
     S_PaPa = sigma[np.ix_(parent_idx, parent_idx)]
     c, low = sla.cho_factor(S_PaPa, lower=True, check_finite=False)
-    Y = sla.cho_solve((c, low), S_jPa.T, check_finite=False)
-    Sigma = S_jj - S_jPa @ Y
-    return Y.T, Sigma
-
-
-def _block_log_det_residual_from_sigma(
-    block_idx: np.ndarray,
-    parent_idx: np.ndarray,
-    sigma: np.ndarray,
-    *,
-    S_jj: np.ndarray | None = None,
-) -> float:
-    """log|Sigma_hat_{j|XP}| via slicing of precomputed Sigma_hat^e. Same
-    Schur-complement math and `LinAlgError` semantics as the raw-array
-    `block_log_det_residual` (now in tests/test_coarse.py); the only difference
-    is the source of `S_jj`/`S_jPa`/`S_PaPa` (slices of `sigma` instead of
-    `(X_block.T @ X_parents) / n_e` from raw data).
-
-    When ``S_jj`` is provided (Tier-2 cache), the ``sigma[np.ix_(...)]`` slice
-    for the target block is skipped. Mutation-safe: ``slogdet`` is non-mutating,
-    and ``S_jj - S_jPa @ Y`` creates a fresh array via ``__sub__``."""
-    _, Sigma = _block_regression_from_sigma(
-        block_idx, parent_idx, sigma, S_jj=S_jj,
-    )
-    sign, logdet = np.linalg.slogdet(Sigma)
-    if sign <= 0 or not np.isfinite(logdet):
-        raise sla.LinAlgError(
-            f"residual covariance has non-positive determinant (sign={sign})"
-        )
-    return float(logdet)
+    Bt = sla.cho_solve((c, low), S_jPa.T, check_finite=False)
+    Sigma = S_jj - S_jPa @ Bt
+    return Bt.T, Sigma
 
 
 def _block_bic_env_from_sigma(
@@ -159,13 +132,14 @@ def _block_bic_env_from_sigma(
     log_n_e: float | None = None,
     S_jj: np.ndarray | None = None,
 ) -> float:
-    """Per-env BIC from precomputed `sigma` + `n_e`. `n_e` MUST travel
-    separately — it is NOT inferable from `sigma.shape[0]` (which is `p`,
-    not the row count).
+    """Per-env BIC from precomputed `sigma`. `n_e` must be passed
+    explicitly; `sigma.shape[0]` is `p`, not the row count.
 
-    Optional keyword args ``d_j``, ``log_n_e``, and ``S_jj`` accept
-    precomputed values from the caller's hot loop, avoiding per-env
-    recomputation of quantities that are invariant across environments."""
+    Returns ``-inf`` when the fit is degenerate: ``n_e <= s_j + r_j``,
+    Cholesky of ``S_PaPa`` fails, or the residual covariance is not positive definite.
+
+    ``d_j``, ``log_n_e``, ``S_jj`` are optional precomputed values for the
+    grow-shrink hot loop."""
     r_j, s_j = block_idx.size, parent_idx.size
     if n_e <= 0 or r_j <= 0:
         return -np.inf
@@ -176,10 +150,13 @@ def _block_bic_env_from_sigma(
     if log_n_e is None:
         log_n_e = float(np.log(n_e))
     try:
-        logdet = _block_log_det_residual_from_sigma(
+        _, Sigma = _block_regression_from_sigma(
             block_idx, parent_idx, sigma, S_jj=S_jj,
         )
     except sla.LinAlgError:
+        return -np.inf
+    sign, logdet = np.linalg.slogdet(Sigma)
+    if sign <= 0 or not np.isfinite(logdet):
         return -np.inf
     log_lik = -0.5 * n_e * logdet
     return 2.0 * log_lik - lambda_pen * log_n_e * d_j
@@ -198,12 +175,13 @@ def pooled_block_bic_from_sigma(
     """Cached-path scoring. Sums per-env BICs from precomputed `EnvStats`,
     short-circuiting to -inf on the first non-finite contribution.
 
-    Optional keyword args (Tier-2 caches) allow the grow-shrink hot loop to
-    pass pre-computed invariants: ``block_idx`` for the target block's sorted
-    index array, ``idx_cache`` mapping each candidate block to its sorted
-    indices, and ``S_jj_cache`` mapping each env key to the pre-sliced
-    ``sigma[block_idx, block_idx]``. All default to ``None`` (recomputed
-    on the spot), so call sites outside the hot loop work unchanged."""
+    Optional keyword args allow the grow-shrink to pass pre-computed invariants:
+    ``block_idx`` for the target block's sorted index array,
+    ``idx_cache`` mapping each candidate block to its sorted indices,
+    ``S_jj_cache`` mapping each env key to the pre-sliced.
+
+    All default to ``None`` (recomputed on the spot).
+    """
     if block_idx is None:
         block_idx = _block_indices(block)
     if idx_cache is not None:
@@ -231,13 +209,12 @@ def pooled_block_bic(
     data_dict: dict[EnvKey, np.ndarray],
     lambda_pen: float = 1.0,
 ) -> float:
-    """Equation 23 — sum-of-environment block BIC.
+    """Sum-of-environment block BIC from raw centered arrays.
 
     BIC_j(pi_j, Pa_j) = Sum_{e in E} BIC_j^e(pi_j, Pa_j)
 
-    Internally routes through `compute_env_stats` + `pooled_block_bic_from_sigma`
-    so a single call rebuilds the per-env sample covariances once instead of
-    once per environment-probe.
+    Not used by the main class (which calls `pooled_block_bic_from_sigma`
+    directly with cached `EnvStats`). Kept for tests and development.
     """
     env_stats = compute_env_stats(data_dict)
     return pooled_block_bic_from_sigma(block, parents, env_stats, lambda_pen)
