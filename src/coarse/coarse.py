@@ -156,9 +156,7 @@ def _run_score_phase(
     # Supports & candidate pools always from original partition + M.
     supports = compute_supports(M, partition)
     candidate_pools = compute_candidate_pools(supports)
-    # infer_partition already sorts blocks by (|supp|, min)
-    # so `list(partition)` is a valid τ ∈ T(≤_supp).
-    # See partition.py
+    # τ is the partition's own order.
     tau = list(partition)
 
     # --- kPC-COARSE: per-block PCA projection ---------------------------------
@@ -334,8 +332,11 @@ class COARSEOracle:
         start = time.perf_counter()
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
         M = np.asarray(M, dtype=bool)
-        if set(partition) != set(infer_partition(M)):
+        canonical = infer_partition(M)
+        if set(partition) != set(canonical):
             raise ValueError("partition must be the row-class partition of M")
+        # Use the canonical order so τ does not depend on the caller's list order.
+        partition = canonical
         rng_gs = self.rng.spawn(1)[0]
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
             partition, M, env_arrays, lambda_pen, rng_gs,
