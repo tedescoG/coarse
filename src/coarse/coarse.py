@@ -1,4 +1,4 @@
-"""COARSE and COARSEOracle classes
+"""COARSE and COARSEOracle classes.
 
 - COARSE: main class implementation of the algorithm. Estimate partition and coarse DAG from interventional data.
 - COARSEOracle: used for experiment on known partition. Recover edges by using the block level score-based grow-shrink.
