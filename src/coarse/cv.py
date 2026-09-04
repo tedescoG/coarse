@@ -326,7 +326,7 @@ class COARSECV:
 
 
 def cv_coarse(data_dict: dict[EnvKey, Any], **kwargs: Any) -> COARSECV:
-    """Functional facade — ``COARSECV().fit(data_dict, **kwargs)``."""
+    """Functional facade for experiments — ``COARSECV().fit(data_dict, **kwargs)``."""
     return COARSECV().fit(data_dict, **kwargs)
 
 
