@@ -82,7 +82,7 @@ def _normalize_env_data(env_value: Any) -> np.ndarray:
     """Coerce one env entry to a contiguous float64 (n_e, p) ndarray.
 
     Targets and types are
-    accepted-and-ignored — COARSE doesn't use intervention-target metadata.
+    accepted-and-ignored (COARSE doesn't use intervention-target metadata).
     """
     if isinstance(env_value, dict):
         if "data" not in env_value:
@@ -114,9 +114,7 @@ def _vectorized_welch(X0: np.ndarray, Xe: np.ndarray) -> np.ndarray:
 
 
 def _vectorized_gaussian_lrt(X0: np.ndarray, Xe: np.ndarray) -> np.ndarray:
-    """Vectorised Gaussian LRT across columns. Same formula as `gaussian_lrt_p`
-    but computed column-wise on (n, p) arrays in pure numpy. Returns a 1-D
-    p-value array of length p."""
+    """Vectorised Gaussian LRT across columns.Returns a 1-D p-value array of length p."""
     m_x = X0.shape[0]
     m_y = Xe.shape[0]
     mu_x = X0.mean(axis=0)
@@ -148,7 +146,7 @@ def compute_M(
     rng: np.random.Generator | None = None,
     baseline_key: EnvKey = "obs",
 ) -> tuple[np.ndarray, list[EnvKey]]:
-    """Algorithm 1 (RefineAux). Build M in {0,1}^{|V| x (|E|-1)} by testing
+    """Descendant Test. Build M in {0,1}^{|V| x (|E|-1)} by testing
     every variable in every non-baseline environment against the baseline.
 
     Returns
