@@ -64,8 +64,8 @@ rule plot_cv:
         "../scripts/plot.py"
 
 
-# Drop cells where samp_size <= num_nodes: with 5-fold CV the per-env train
-# fold is 0.8*samp_size, so the per-env Σ̂ is rank-deficient and every (α,
+# Drop cells where samp_size <= num_nodes: with 10-fold CV the per-env train
+# fold is 0.9*samp_size, so the per-env Σ̂ is rank-deficient and every (α,
 # fold) cell returns -inf, tripping COARSECV's "all pairs failed" RuntimeError.
 # Not an identifiable regime; no point burning compute on it.
 #

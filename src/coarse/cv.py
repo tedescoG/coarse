@@ -4,8 +4,9 @@ K-fold cross-validation for the partition test threshold α in COARSE.
 
 For each α ∈ alpha_grid, for each fold k ∈ {1..K}:
   1. Fit COARSE on the (-k) train data at α → (partition, parent_sets).
-  2. Build train-fold per-env Σ̂ via `compute_env_stats`; extract (B, Σ) per
-     (env, block) via the shared Schur-complement helper from `scoring.py`.
+  2. Center the train fold with its own per-env mean, build per-env Σ̂ via
+     `compute_env_stats`, and extract (B, Σ) per (env, block) via the shared
+     Schur-complement helper from `scoring.py`.
   3. Center the test fold with the *train* per-env mean.
   4. Sum log N(X_test_block | X_test_parents @ B^T, Σ) over (env, block).
 
@@ -21,7 +22,7 @@ the Gaussian log-likelihood retains the trace term and the
 from __future__ import annotations
 
 import time
-from typing import Any, Sequence
+from typing import Any, Iterator, Sequence
 
 import numpy as np
 from scipy import linalg as sla
@@ -36,32 +37,26 @@ from coarse.scoring import (
 from coarse.types import EnvKey
 
 DEFAULT_ALPHA_GRID: tuple[float, ...] = (1e-4, 1e-3, 1e-2, 0.05, 0.1)
-DEFAULT_N_FOLDS: int = 5
+# Note: α is a p-value cutoff and its effect-size scales as 1/√n, so the α
+# validated at n_train is applied at a stricter cutoff when refit on n.
+# Larger K keeps n_train close to n and that mismatch small.
+DEFAULT_N_FOLDS: int = 10
 
 
 def _kfold_split_env(
     env_arrays: dict[EnvKey, np.ndarray],
     n_folds: int,
     rng: np.random.Generator,
-) -> list[tuple[dict[EnvKey, np.ndarray], dict[EnvKey, np.ndarray]]]:
-    """Per-environment K-fold split.
+) -> Iterator[tuple[dict[EnvKey, np.ndarray], dict[EnvKey, np.ndarray]]]:
+    """Per-environment K-fold split, yielding one ``(train, test)`` dict pair
+    per fold.
 
-    Each environment's rows are permuted independently and partitioned into
-    ``n_folds`` contiguous chunks via ``np.array_split`` (which handles
-    non-divisible row counts by making the last few chunks one element smaller).
+    Each env's rows are permuted independently and cut into ``n_folds`` chunks
+    with ``np.array_split``.
 
-    Raises
-    ------
-    ValueError
-        If any environment has ``n_e < n_folds``. A silent shrink would make
-        ``L^{(k)}`` incoherent across environments (envs would contribute
-        different numbers of test rows per fold).
+    Raises ``ValueError`` if any env has ``n_e < n_folds``.
 
-    Returns
-    -------
-    list of (train_dict, test_dict) pairs, length ``n_folds``. Each dict has
-    the same keys as ``env_arrays``; the row counts sum to the original
-    ``n_e`` per env.
+    Folds are materialised lazily so only one is held in memory at a time.
     """
     chunks: dict[EnvKey, list[np.ndarray]] = {}
     for ek, X in env_arrays.items():
@@ -72,7 +67,6 @@ def _kfold_split_env(
             )
         chunks[ek] = np.array_split(rng.permutation(n_e), n_folds)
 
-    pairs: list[tuple[dict[EnvKey, np.ndarray], dict[EnvKey, np.ndarray]]] = []
     for k in range(n_folds):
         train_dict: dict[EnvKey, np.ndarray] = {}
         test_dict: dict[EnvKey, np.ndarray] = {}
@@ -83,8 +77,7 @@ def _kfold_split_env(
             )
             train_dict[ek] = X[train_idx]
             test_dict[ek] = X[test_idx]
-        pairs.append((train_dict, test_dict))
-    return pairs
+        yield train_dict, test_dict
 
 
 def _heldout_block_log_lik(
@@ -108,7 +101,7 @@ def _heldout_block_log_lik(
     The implementation evaluates ``tr(Σ^{-1} Rᵀ R) = ⟨R, Σ^{-1} R⟩`` via one
     Cholesky solve plus an einsum contraction; ``Σ^{-1}`` is never formed.
 
-    Returns ``-inf`` (no ridge/pseudoinverse rescue) when:
+    Returns ``-inf`` when:
       - the test fold is empty,
       - ``Sigma_train`` is non-PD (Cholesky failure or ``slogdet`` sign ≤ 0).
     """
@@ -153,9 +146,9 @@ def _evaluate_fold(
 
     Fits COARSE on the train fold at ``alpha``, then sums the held-out
     Gaussian log-likelihood across (env, block). Returns ``-inf`` if any
-    block evaluation fails (singular train Σ_PaPa, non-PD train residual
-    Σ, or empty test fold) — the principled-stats short-circuit matches the
-    BIC scorer's ``-inf`` posture at ``scoring.py:151-154, 163-164``.
+    block evaluation fails (singular train Σ_PaPa or non-PD train residual
+    Σ, i.e. the train fold is too small for |block| + |Pa|, or an empty test
+    fold).
     """
     model = COARSE(rng=rng).fit(
         train_dict,
@@ -165,9 +158,7 @@ def _evaluate_fold(
         baseline_key=baseline_key,
     )
 
-    # Centering contract: train means → applied to both train and test. Using
-    # test-fold means here would mechanically shrink residuals and bias the
-    # CV objective upward as α changes the partition.
+    # Centering using train means → applied to both train and test.
     env_means = {ek: v.mean(axis=0, keepdims=True) for ek, v in train_dict.items()}
     centered_train = {ek: v - env_means[ek] for ek, v in train_dict.items()}
     env_stats_train = compute_env_stats(centered_train)
@@ -248,16 +239,19 @@ class COARSECV:
 
         splitter_rng, refit_rng, inner_root_rng = self.rng.spawn(3)
 
-        fold_pairs = _kfold_split_env(env_arrays, n_folds, splitter_rng)
-
         inner_rngs = np.asarray(
             inner_root_rng.spawn(len(alpha_grid) * n_folds),
             dtype=object,
         ).reshape(len(alpha_grid), n_folds)
 
+        # Folds outer, α inner: each fold's arrays are built once and dropped
+        # before the next; the (α, fold) RNG grid above keeps results
+        # independent of this loop order.
         per_fold = np.full((len(alpha_grid), n_folds), -np.inf, dtype=float)
-        for i, alpha in enumerate(alpha_grid):
-            for k, (tr, te) in enumerate(fold_pairs):
+        for k, (tr, te) in enumerate(
+            _kfold_split_env(env_arrays, n_folds, splitter_rng)
+        ):
+            for i, alpha in enumerate(alpha_grid):
                 per_fold[i, k] = _evaluate_fold(
                     tr,
                     te,
@@ -277,9 +271,7 @@ class COARSECV:
                 "(n_e per env, |block| relative to test-fold size)"
             )
 
-        # Argmax over finite sums; tiebreak (exact float equality, which is the
-        # common case when several α's produce the same partition) picks the
-        # larger α — sparser fit, deterministic.
+        # Argmax over finite sums; tiebreak picks the larger α.
         best_i = int(
             max(
                 (i for i in range(len(alpha_grid)) if np.isfinite(sums[i])),

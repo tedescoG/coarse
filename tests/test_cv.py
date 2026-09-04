@@ -109,7 +109,7 @@ def test_cv_splitter_disjoint_complete():
         "1": rng_data.standard_normal((15, 3)),
     }
     n_folds = 5
-    pairs = _kfold_split_env(env_arrays, n_folds, np.random.default_rng(42))
+    pairs = list(_kfold_split_env(env_arrays, n_folds, np.random.default_rng(42)))
 
     assert len(pairs) == n_folds
 
@@ -134,7 +134,7 @@ def test_cv_splitter_handles_non_divisible_row_counts():
     rng_data = np.random.default_rng(0)
     # n_e = 23, n_folds = 5 → chunk sizes [5, 5, 5, 4, 4].
     env_arrays = {"obs": rng_data.standard_normal((23, 2))}
-    pairs = _kfold_split_env(env_arrays, n_folds=5, rng=np.random.default_rng(0))
+    pairs = list(_kfold_split_env(env_arrays, n_folds=5, rng=np.random.default_rng(0)))
 
     test_sizes = sorted(te["obs"].shape[0] for _, te in pairs)
     assert test_sizes == [4, 4, 5, 5, 5]
@@ -149,7 +149,7 @@ def test_cv_splitter_raises_on_small_env():
     raise rather than silently shrink K for that env."""
     env_arrays = {"obs": np.zeros((3, 2))}
     with pytest.raises(ValueError, match="n_folds"):
-        _kfold_split_env(env_arrays, n_folds=5, rng=np.random.default_rng(0))
+        list(_kfold_split_env(env_arrays, n_folds=5, rng=np.random.default_rng(0)))
 
 
 def test_cv_fit_propagates_splitter_error():
@@ -308,4 +308,4 @@ def test_cv_refit_matches_fresh_fit_at_best_alpha():
 def test_default_alpha_grid_and_n_folds():
     """Pin the documented defaults so a careless re-edit can't change them."""
     assert DEFAULT_ALPHA_GRID == (1e-4, 1e-3, 1e-2, 0.05, 0.1)
-    assert DEFAULT_N_FOLDS == 5
+    assert DEFAULT_N_FOLDS == 10

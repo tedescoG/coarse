@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run COARSE-CV (5-fold α-selection wrapper) on the CausalChamber light tunnel.
+"""Run COARSE-CV (10-fold α-selection wrapper) on the CausalChamber light tunnel.
 
 Mirrors `causalchamber_coarse.py` but swaps the α × λ grid for a λ-only outer
 loop. For each λ in `snakemake.params.lambdas`, a fresh `COARSECV` is fitted

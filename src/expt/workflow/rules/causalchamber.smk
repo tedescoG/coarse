@@ -139,12 +139,12 @@ rule causalchamber_onepc_ungrouped:
 
 
 # ---------------------------------------------------------------------------
-# COARSE-CV — λ-only outer sweep; α selected internally by 5-fold CV from
+# COARSE-CV — λ-only outer sweep; α selected internally by 10-fold CV from
 # DEFAULT_ALPHA_GRID (coarse.cv.DEFAULT_ALPHA_GRID). k=None.
 # ---------------------------------------------------------------------------
 
 CV_ALPHA_GRID = [1e-4, 1e-3, 1e-2, 0.05, 0.1]
-CV_N_FOLDS = 5
+CV_N_FOLDS = 10
 
 
 rule causalchamber_cv_grouped:

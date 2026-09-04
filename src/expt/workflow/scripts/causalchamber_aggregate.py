@@ -102,7 +102,7 @@ def main():
         dag = dag_from_labeled_parts(p["parts"], p["edges"], name_to_idx)
         second_knob = "β" if method == "repare" else "λ"
         second_val = p.get("lambda", p.get("beta"))
-        # For CV, α was selected internally via 5-fold cv_log_lik argmax —
+        # For CV, α was selected internally via 10-fold cv_log_lik argmax —
         # mark it with α̂ rather than α to avoid implying it was a free knob.
         alpha_sym = "α̂" if method == "cv" else "α"
         title = (
