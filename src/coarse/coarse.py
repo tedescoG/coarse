@@ -35,7 +35,7 @@ def _project_blocks(
     """Per-block PCA projection for kPC-COARSE.
 
     For each block π_j, computes the top-k_j right singular vectors from the
-    observational (baseline) environment, then projects every environment's
+    observational environment, then projects every environment's
     block data onto that basis.  Returns projected env arrays
     (n_e, K), the remapped partition, and the original→projected block map.
     """
@@ -81,9 +81,7 @@ def _normalize_data_dict(
 
     Each env value may be a bare 2-D array, a ``(data, targets, type)`` tuple,
     or a ``{"data": ...}`` dict. Intervention targets and intervention-type
-    strings are accepted-and-ignored: COARSE reads only the data array
-    (Algorithm 1 detects distributional shifts, it does not use target
-    metadata).
+    strings are accepted-and-ignored: COARSE reads only the data array.
     """
     if baseline_key not in data_dict:
         raise ValueError(
@@ -134,22 +132,17 @@ def _run_score_phase(
     dict[Block, list[Block]],
     float,
 ]:
-    """Shared signature-analysis + grow-shrink loop for both COARSE and
-    COARSEOracle. Computes supports, candidate pools, τ, parent sets, and the
+    """Derive signature + grow-shrink loop for both COARSE and
+    COARSEOracle.
+
+    Computes supports, candidate pools, τ, parent sets, and the
     total score Σ_j BIC_j(π_j, P̂a_j).
 
     Centers each env's data once per fit before scoring: `block_residual_covariance`
-    (and everything downstream of it) assumes column-centered input. Per-env
-    per-column means are invariant under column slicing, so centering each env's
-    full array here is mathematically equivalent to centering on each
-    `pooled_block_bic` call but skips the redundant work across many
-    grow/shrink moves. Must run after `compute_M` (Welch on per-env-centered
-    data is degenerate); see hypothesis_tests.compute_M.
+    (and everything downstream of it) assumes column-centered input.
 
-    When ``k`` is not None, additionally Z-scores each env's columns (after
-    centering): without it, high-variance variables dominate the singular
-    vectors. Plain COARSE never scales — rescaling cannot change the selected
-    parents, only the score value.
+    When ``k`` is not None, additionally Z-scores each env's columns:
+    without it, high-variance variables dominate the singular vectors.
     """
     centered_env_arrays: dict[EnvKey, np.ndarray] = {
         ek: v - v.mean(axis=0, keepdims=True) for ek, v in env_arrays.items()
@@ -163,9 +156,9 @@ def _run_score_phase(
     # Supports & candidate pools always from original partition + M.
     supports = compute_supports(M, partition)
     candidate_pools = compute_candidate_pools(supports)
-    # infer_partition already sorts blocks by (|supp|, min) — the same key
-    # linear_extension would produce — so `list(partition)` is a valid
-    # τ ∈ T(≤_supp). See partition.py:60 and Lemma 6 of the draft.
+    # infer_partition already sorts blocks by (|supp|, min)
+    # so `list(partition)` is a valid τ ∈ T(≤_supp).
+    # See partition.py
     tau = list(partition)
 
     # --- kPC-COARSE: per-block PCA projection ---------------------------------
@@ -185,9 +178,8 @@ def _run_score_phase(
         score_tau = tau
         block_map = rev_map = None  # type: ignore[assignment]
 
-    # Tier-1 cache: precompute per-env Σ̂^e once here so every grow-shrink
-    # probe and the final score sum below can slice into it instead of
-    # re-forming the covariance from raw arrays on each call.
+    # Precompute and cache per-env Σ̂^e.
+    # Avoid re-computing the covariance matrix for each evaluation.
     env_stats = compute_env_stats(score_data)
 
     parent_sets_scored: dict[Block, list[Block]] = {}
@@ -224,8 +216,8 @@ class COARSE:
 
     Attributes set by `.fit`
     ------------------------
-    partition : list[Block]                       — Π_E
-    M : ndarray (bool)                             — distributional descendant matrix
+    partition : list[Block]                        — Π_E
+    M : ndarray (bool)                             — interventional descendant matrix
     env_order : list[EnvKey]                       — column order of M
     supports : dict[Block, frozenset[int]]         — supp(π) per block
     candidate_pools : dict[Block, list[Block]]     — Pa⋆(π) per block
@@ -258,7 +250,7 @@ class COARSE:
         # refine_test='energy' uses resampling).
         rng_M, rng_gs = self.rng.spawn(2)
 
-        # Algorithm 1 — RefineAux
+        # DescendantTest: compute the matrix M by marginal two-sample tests
         M, env_order = compute_M(
             env_arrays,
             alpha=alpha,
@@ -267,10 +259,10 @@ class COARSE:
             baseline_key=baseline_key,
         )
 
-        # Algorithm 2 — RefineTest (row-class refinement)
+        # RefineSplit: Refine partition by splitting over different supports
         partition = infer_partition(M)
 
-        # Signature analysis + Algorithm 4 grow-shrink per block
+        # Compute support, candidate parent pool and support ordering (linear extension)
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
             partition, M, env_arrays, lambda_pen, rng_gs,
             k=k, baseline_key=baseline_key,
@@ -302,7 +294,6 @@ class COARSE:
 
     def expand_coarsened_dag(self, fully_connected: bool = False) -> np.ndarray:
         """Project the coarse partition DAG into a full p × p adjacency matrix.
-
         """
         num_features = self.num_features
         adjacency = np.zeros((num_features, num_features), dtype=int)
