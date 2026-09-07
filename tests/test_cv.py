@@ -1,6 +1,6 @@
 """Tests for COARSECV — K-fold CV wrapper that selects α from a grid.
 
-The tests pin the contract:
+Tests:
 
   1. Public API smoke — best_alpha lands in the grid, per-fold matrix has the
      right shape, forwarded attributes (dag, score) match the final refit.
@@ -10,12 +10,8 @@ The tests pin the contract:
      failure raises RuntimeError; ties break toward the smallest α.
   4. Held-out log-likelihood closed-form — matches scipy multivariate_normal
      in the no-parents case to rel=1e-10.
-  5. Refit RNG contract — reproducing the documented spawn order yields the
+  5. Refit RNG — reproducing the documented order yields the
      same final DAG as the CV refit.
-
-Per memory `feedback_neutral_diagnostics_no_targeted_signal`, no test asserts
-that the "true" α wins on small samples; fixtures are vanilla and we report
-what the math does in practice (smoke + closed-form sanity instead).
 """
 
 from __future__ import annotations
@@ -64,12 +60,12 @@ def test_cv_smoke_returns_best_alpha_in_grid():
     assert cv.best_alpha in grid
     assert cv.cv_per_fold_log_lik.shape == (len(grid), n_folds)
     assert set(cv.cv_log_lik.keys()) == set(grid)
-    # The selected α's CV objective is finite (otherwise the run is degenerate).
+    # The selected α's CV objective is finite.
     assert np.isfinite(cv.cv_log_lik[cv.best_alpha])
     # Tiebreaker: argmax-on-finite-sums is the same as max(cv_log_lik.values()).
     assert cv.cv_log_lik[cv.best_alpha] == max(cv.cv_log_lik.values())
 
-    # Forwarded COARSE surface matches the final refit exactly.
+    # Forwarded COARSE matches the final refit exactly.
     assert set(cv.dag.nodes) == set(cv.final_model.dag.nodes)
     assert set(cv.dag.edges) == set(cv.final_model.dag.edges)
     assert cv.score == cv.final_model.score
@@ -162,8 +158,7 @@ def test_cv_fit_propagates_splitter_error():
 
 
 def test_cv_all_folds_fail_raises():
-    """Too few rows for any train fold to be scorable: every (α, fold) cell is
-    -inf and ``fit`` must raise rather than pick an arbitrary α."""
+    """Too few rows for any train fold to be scorable"""
     rng = np.random.default_rng(0)
     data_dict = {
         "obs": sample_chain_dataset(8, rng),
@@ -175,8 +170,7 @@ def test_cv_all_folds_fail_raises():
 
 def test_cv_tiebreak_prefers_smaller_alpha(monkeypatch):
     """Ties are the common case (several α give the same partition on every
-    fold). The refit is more powerful than the folds, so the smallest tied α is
-    the one most likely to reproduce the validated partition."""
+    fold)."""
     import coarse.cv as cv_mod
 
     monkeypatch.setattr(cv_mod, "_evaluate_fold", lambda *a, **k: -1.0)
@@ -202,7 +196,7 @@ def test_cv_fit_validates_arguments():
 def test_heldout_log_lik_no_parents_matches_scipy():
     """With no parents, the held-out log-lik collapses to summing the
     Gaussian log-density of test residuals (= centered test rows) under a
-    train-fit Σ. scipy.stats.multivariate_normal gives the closed-form."""
+    train-fit Σ. compared with scipy.stats.multivariate_normal closed-form."""
     rng = np.random.default_rng(0)
     p = 3
     X = rng.standard_normal((400, p))

@@ -1,19 +1,8 @@
 """Tests for the multi-target intervention extension.
 
-Validates two properties:
+COARSE / cv_coarse must accept and process multi-target ``data_dict`` inputs without raising
+(the algorithm itself ignores targets).
 
-1. **Backward compatibility** — the edits to ``_common.build_oracle_partition``
-   and ``generate.py`` must be no-ops on the single-target inputs that every
-   existing experiment uses. Test #1 locks this in by exact snapshot.
-
-2. **Multi-target correctness** — the oracle partition under a multi-target
-   intervention must equal the union of the singletons it decomposes into,
-   ``build_data_dict`` must store the full target set, and COARSE / cv_coarse
-   must accept and process multi-target ``data_dict`` inputs without raising
-   (the algorithm itself ignores targets, but the API contract must hold).
-
-Imports ``_common`` via a ``sys.path`` shim because that file lives outside the
-installed package (it is a snakemake-script-local helper).
 """
 from __future__ import annotations
 
@@ -27,10 +16,7 @@ import pytest
 from coarse.coarse import COARSE
 from coarse.cv import cv_coarse
 
-# _common.py is a sibling of generate.py under src/expt/workflow/scripts/ — it
-# is intentionally not part of the installed `coarse` package. Tests import it
-# through a path shim, matching the trick that snakemake itself uses (the
-# `script:` directive prepends the script's directory to sys.path).
+# _common.py is a sibling of generate.py under src/expt/workflow/scripts/
 SCRIPTS_DIR = (
     Path(__file__).resolve().parent.parent
     / "src" / "expt" / "workflow" / "scripts"
@@ -72,8 +58,6 @@ def test_parse_targets_per_interv_grammar():
 
 
 def test_build_oracle_partition_single_target_unchanged():
-    """The edit to build_oracle_partition must be a no-op for singleton
-    targets — historical single-target sweeps cannot shift by one bit."""
     targets = [[0], [2]]  # single-target, as today's generate.py emits
     _, M_true, env_order, partition = build_oracle_partition(
         _DAG_WEIGHTS, targets, _NUM_NODES
@@ -121,8 +105,7 @@ def test_build_oracle_partition_multi_target_takes_union():
 
 def test_build_data_dict_multi_target_set():
     """``build_data_dict`` must store the *full* target set (not just the
-    first element) — otherwise the env tuple's intervention info is silently
-    truncated to single-target, defeating the experiment."""
+    first element)."""
     n = 50
     data = {"obs": np.zeros((n, 5)), "0": np.zeros((n, 5))}
     targets = [(0, 2, 4)]  # one env, three-element target set
@@ -165,9 +148,7 @@ def test_coarse_fit_multi_target_smoke():
 
 
 def test_cv_coarse_fit_multi_target_smoke():
-    """Same end-to-end check for cv_coarse — the CV wrapper must also accept
-    multi-target ``data_dict`` inputs. Uses a tiny α grid and n_folds=2 to
-    keep runtime in the sub-second range."""
+    """Same end-to-end check for cv_coarse."""
     rng = np.random.default_rng(1)
     n = 1500
     obs = sample_chain_dataset(n, rng, shift_targets=())
