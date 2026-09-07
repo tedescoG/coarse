@@ -8,6 +8,11 @@ RePaRe's `min(...)` convention, which negates GnIES BIC. The two scores are
 NOT comparable across methods; cross-method comparison happens via
 ARI / partition-edge precision / recall / F1, never via the `score` column.
 
+BIC is also not comparable across λ (a smaller penalty always scores higher),
+so the score-selected row is the best α **within the fixed
+`snakemake.params.score_lambda` column**; the full α × λ grid is still written
+to `metrics.csv` and used by the oracle row.
+
 COARSE vs COARSE-1PC is controlled entirely by `snakemake.params.k`:
     k = None  → plain COARSE (no PCA on parent blocks)
     k = 1     → COARSE-1PC (1-component PCA per parent block)
@@ -31,6 +36,8 @@ from _causalchamber_common import (
     partition_edge_metrics,
     partition_labels_from_dag,
     save_dag_plot,
+    select_oracle_row,
+    select_score_row,
 )
 
 
@@ -62,6 +69,7 @@ def main():
 
     alphas = [float(a) for a in snakemake.params.alphas]
     lambdas = [float(lam) for lam in snakemake.params.lambdas]
+    score_lambda = float(snakemake.params.score_lambda)
     mode = snakemake.params.mode
     k_param = snakemake.params.k
     k = None if k_param in (None, "None", "none", "") else int(k_param)
@@ -111,12 +119,11 @@ def main():
     df = pd.DataFrame(records)
     df.to_csv(snakemake.output.metrics_csv, index=False)
 
-    # Score-selected: max model.score (higher is better); tie-break by ARI.
-    # Oracle-selected: max ARI, then F1, then precision, then score.
-    score_row = max(records, key=lambda r: (r["score"], r["ari"]))
-    oracle_row = max(
-        records, key=lambda r: (r["ari"], r["f1"], r["precision"], r["score"])
-    )
+    # Score-selected: best α at the fixed λ (BIC is not comparable across λ);
+    # tie → smaller α; ground truth never enters.
+    # Oracle-selected: ground truth over the whole grid.
+    score_row = select_score_row(records, score_lambda)
+    oracle_row = select_oracle_row(records)
 
     score_dag = dags[(score_row["alpha"], score_row["lambda"])]
     oracle_dag = dags[(oracle_row["alpha"], oracle_row["lambda"])]

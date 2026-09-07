@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """Run COARSE-CV (10-fold α-selection wrapper) on the CausalChamber light tunnel.
 
-Mirrors `causalchamber_coarse.py` but swaps the α × λ grid for a λ-only outer
-loop. For each λ in `snakemake.params.lambdas`, a fresh `COARSECV` is fitted
-which internally cross-validates α over `alpha_grid` and refits at α̂ on the
-full data. The forwarded `model.dag` / `model.score` come from the final refit
-(see `coarse/cv.py:353-366`), so ARI / edge-metric computation is identical to
-the plain-COARSE path.
+Mirrors `causalchamber_coarse.py` but replaces the α × λ grid with a single
+`COARSECV` fit at the fixed `snakemake.params.lambda_pen`: α is cross-validated
+over `alpha_grid` and the model is refit at α̂ on the full data (the same
+one-tuned-threshold design as RePaRe's β selection). The forwarded
+`model.dag` / `model.score` come from the final refit, so ARI / edge-metric
+computation is identical to the plain-COARSE path.
 
 `fit_time` is set to `model.cv_runtime_sec` (the total CV wall time including
 all K × |A| inner fits + the final refit), matching the convention in
-`fit_cv.py:32` — otherwise the runtime column would silently undercount the
-work and skew any future cross-method timing plot.
+`fit_cv.py` — otherwise the runtime column would silently undercount the work.
 
-Score / oracle selection across the 4 λ cells uses the same comparators as
-`causalchamber_coarse.py:118-121`. Because α is CV-selected inside each cell,
-the resulting (α̂, λ) grid is a 1-D sweep over λ rather than a 2-D α × λ grid.
+Because α is CV-selected and λ is fixed there is nothing left to select over:
+`score_params.json` and `oracle_params.json` are both written from the single
+fit so the aggregator's (score, oracle) contract holds; ground truth is never
+consulted on this path.
 """
 
 import json
@@ -64,7 +64,7 @@ def main():
     with open(snakemake.input.features, "r") as f:
         feature_cols = json.load(f)["feature_cols"]
 
-    lambdas = [float(lam) for lam in snakemake.params.lambdas]
+    lambda_pen = float(snakemake.params.lambda_pen)
     alpha_grid = tuple(float(a) for a in snakemake.params.alpha_grid)
     n_folds = int(snakemake.params.n_folds)
     mode = snakemake.params.mode
@@ -81,53 +81,42 @@ def main():
             true_dag_full = pickle.load(f)
         _, true_labels = ground_truth_partition(targets, partition_parts, true_dag_full)
 
-    records = []
-    dags = {}
-    for lambda_pen in lambdas:
-        start = time.perf_counter()
-        model = COARSECV().fit(
-            data_dict,
-            alpha_grid=alpha_grid,
-            n_folds=n_folds,
-            lambda_pen=lambda_pen,
-            refine_test="welch",
-        )
-        # Outer wall-clock includes the full CV loop (inner fits + refit).
-        # `cv_runtime_sec` is the canonical "total work" figure — see
-        # `coarse/cv.py:351` and `fit_cv.py:32`.
-        fit_time = max(time.perf_counter() - start, float(model.cv_runtime_sec))
+    start = time.perf_counter()
+    model = COARSECV().fit(
+        data_dict,
+        alpha_grid=alpha_grid,
+        n_folds=n_folds,
+        lambda_pen=lambda_pen,
+        refine_test="welch",
+    )
+    # Outer wall-clock includes the full CV loop (inner fits + refit).
+    # `cv_runtime_sec` is the canonical "total work" figure (see `fit_cv.py`).
+    fit_time = max(time.perf_counter() - start, float(model.cv_runtime_sec))
 
-        est_labels = partition_labels_from_dag(model.dag, num_atoms)
-        ari = adjusted_rand_score(true_labels, est_labels)
-        edge_stats = partition_edge_metrics(model.dag, true_graph)
+    est_labels = partition_labels_from_dag(model.dag, num_atoms)
+    ari = adjusted_rand_score(true_labels, est_labels)
+    edge_stats = partition_edge_metrics(model.dag, true_graph)
 
-        records.append({
-            "alpha": float(model.best_alpha),
-            "lambda": float(lambda_pen),
-            "ari": float(ari),
-            "score": float(model.score),
-            "fit_time": float(fit_time),
-            "num_parts": int(model.dag.number_of_nodes()),
-            "num_edges": int(model.dag.number_of_edges()),
-            "n_folds": int(n_folds),
-            "cv_log_lik_at_best": float(model.cv_log_lik[model.best_alpha]),
-            **edge_stats,
-        })
-        dags[(float(model.best_alpha), float(lambda_pen))] = model.dag
+    row = {
+        "alpha": float(model.best_alpha),
+        "lambda": float(lambda_pen),
+        "ari": float(ari),
+        "score": float(model.score),
+        "fit_time": float(fit_time),
+        "num_parts": int(model.dag.number_of_nodes()),
+        "num_edges": int(model.dag.number_of_edges()),
+        "n_folds": int(n_folds),
+        "cv_log_lik_at_best": float(model.cv_log_lik[model.best_alpha]),
+        **edge_stats,
+    }
 
-    df = pd.DataFrame(records)
+    df = pd.DataFrame([row])
     df.to_csv(snakemake.output.metrics_csv, index=False)
 
-    # Score-selected: max model.score (Eq. 21 partition BIC, higher is better);
-    # tie-break by ARI. Oracle-selected: max ARI, then F1, then precision, then
-    # score. Mirrors `causalchamber_coarse.py:118-121`.
-    score_row = max(records, key=lambda r: (r["score"], r["ari"]))
-    oracle_row = max(
-        records, key=lambda r: (r["ari"], r["f1"], r["precision"], r["score"])
-    )
-
-    score_dag = dags[(score_row["alpha"], score_row["lambda"])]
-    oracle_dag = dags[(oracle_row["alpha"], oracle_row["lambda"])]
+    # α is CV-selected and λ is fixed, so the score- and oracle-selected rows
+    # coincide by construction; both files are emitted for the aggregator.
+    score_row = oracle_row = row
+    score_dag = oracle_dag = model.dag
 
     save_dag_plot(score_dag, feature_cols, Path(snakemake.output.score_dag))
     save_dag_plot(oracle_dag, feature_cols, Path(snakemake.output.oracle_dag))

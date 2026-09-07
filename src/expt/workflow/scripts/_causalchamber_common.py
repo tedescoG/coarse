@@ -183,3 +183,28 @@ def partition_labels_from_dag(model_dag: nx.DiGraph, num_atoms: int) -> np.ndarr
     for block_idx, block in enumerate(model_dag.nodes):
         labels[list(block)] = block_idx
     return labels
+
+
+def select_score_row(records: list[dict], score_lambda: float) -> dict:
+    """Data-driven pick over an α × λ grid: the max-BIC row **among rows at
+    ``score_lambda``**, tie-break on the smaller α.
+
+    BIC is ``2ℓ − λ·log(n)·d`` with ``d > 0``, so for a fixed model it is
+    strictly decreasing in λ; a max over the whole grid would always land on
+    the smallest λ regardless of the data. Ground truth never enters here.
+    """
+    rows = [r for r in records if np.isclose(r["lambda"], score_lambda)]
+    if not rows:
+        raise ValueError(
+            f"no grid row has lambda={score_lambda!r}; "
+            f"available: {sorted({r['lambda'] for r in records})}"
+        )
+    return max(rows, key=lambda r: (r["score"], -r["alpha"]))
+
+
+def select_oracle_row(records: list[dict]) -> dict:
+    """Ground-truth pick over the whole grid: max ARI, then F1, then
+    precision, then score (upper bound on what any selection could reach)."""
+    return max(
+        records, key=lambda r: (r["ari"], r["f1"], r["precision"], r["score"])
+    )

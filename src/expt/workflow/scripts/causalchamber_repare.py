@@ -129,8 +129,9 @@ def main():
     df.to_csv(snakemake.output.metrics_csv, index=False)
 
     # RePaRe's native selection: min score (lower is better after negation);
-    # tie-break by higher ARI. Oracle: max ARI / F1 / precision, then min score.
-    score_row = min(records, key=lambda r: (r["score"], -r["ari"]))
+    # tie-break: smaller α (ground truth never enters the score-selected row).
+    # Oracle: max ARI / F1 / precision, then min score.
+    score_row = min(records, key=lambda r: (r["score"], r["alpha"]))
     oracle_row = max(
         records, key=lambda r: (r["ari"], r["f1"], r["precision"], -r["score"])
     )
