@@ -1,12 +1,13 @@
 """Tests for COARSECV — K-fold CV wrapper that selects α from a grid.
 
-Five tests pin the contract:
+The tests pin the contract:
 
   1. Public API smoke — best_alpha lands in the grid, per-fold matrix has the
      right shape, forwarded attributes (dag, score) match the final refit.
   2. Splitter geometry — train/test disjoint, test folds cover all rows,
      sizes sum to n_e per environment.
-  3. Splitter precondition — n_e < n_folds raises ValueError.
+  3. Splitter precondition — n_e < n_folds raises ValueError; all-fold
+     failure raises RuntimeError; ties break toward the smallest α.
   4. Held-out log-likelihood closed-form — matches scipy multivariate_normal
      in the no-parents case to rel=1e-10.
   5. Refit RNG contract — reproducing the documented spawn order yields the
@@ -154,9 +155,37 @@ def test_cv_splitter_raises_on_small_env():
 
 def test_cv_fit_propagates_splitter_error():
     """The splitter precondition surfaces through the full ``fit`` path."""
-    data_dict = {"obs": np.zeros((3, 2)), "1": np.zeros((3, 2))}
+    rng = np.random.default_rng(0)
+    data_dict = {"obs": rng.standard_normal((3, 2)), "1": rng.standard_normal((3, 2))}
     with pytest.raises(ValueError, match="n_folds"):
         COARSECV().fit(data_dict, alpha_grid=(1e-4,), n_folds=5)
+
+
+def test_cv_all_folds_fail_raises():
+    """Too few rows for any train fold to be scorable: every (α, fold) cell is
+    -inf and ``fit`` must raise rather than pick an arbitrary α."""
+    rng = np.random.default_rng(0)
+    data_dict = {
+        "obs": sample_chain_dataset(8, rng),
+        "1": sample_chain_dataset(8, rng, shift_targets=(0, 1)),
+    }
+    with pytest.raises(RuntimeError, match="all"):
+        COARSECV().fit(data_dict, alpha_grid=(1e-3,), n_folds=2)
+
+
+def test_cv_tiebreak_prefers_smaller_alpha(monkeypatch):
+    """Ties are the common case (several α give the same partition on every
+    fold). The refit is more powerful than the folds, so the smallest tied α is
+    the one most likely to reproduce the validated partition."""
+    import coarse.cv as cv_mod
+
+    monkeypatch.setattr(cv_mod, "_evaluate_fold", lambda *a, **k: -1.0)
+    data_dict = _chain_data_dict(n=200, seed=0)
+    grid = (1e-3, 1e-2, 1e-4, 0.05)
+    cv = COARSECV(rng=np.random.default_rng(0)).fit(
+        data_dict, alpha_grid=grid, n_folds=2,
+    )
+    assert cv.best_alpha == min(grid)
 
 
 def test_cv_fit_validates_arguments():

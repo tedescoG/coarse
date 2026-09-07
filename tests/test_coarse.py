@@ -310,8 +310,7 @@ def test_numerical_stability_near_singular():
 
 
 def test_block_bic_env_undersized_env_returns_minus_inf():
-    """Remark 6 (p. 21): if n_e < s_j + r_j the model is ill-posed.
-    Should yield -inf rather than crashing."""
+    """Remark 6: n_e <= s_j + r_j is ill-posed -> -inf, no crash."""
     rng = np.random.default_rng(0)
     # n=3 observations, r_j=2, s_j=5 → 3 < 7
     X_block = rng.standard_normal((3, 2))
@@ -365,7 +364,7 @@ def test_pooled_block_bic_from_sigma_matches_public_path():
             err_msg=f"mismatch at block={block} parents={parents}",
         )
 
-    # -inf propagation: tiny env where n_e < s_j + r_j
+    # -inf propagation: n_e <= s_j + r_j
     small = {k: v[:3] for k, v in centered.items()}
     small_stats = compute_env_stats(small)
     block = frozenset({0, 1})
@@ -435,6 +434,77 @@ def test_fit_rejects_bad_input(corrupt):
         data_dict["1"] = data_dict["1"][:1]
     with pytest.raises(ValueError):
         COARSE().fit(data_dict)
+
+
+@pytest.mark.parametrize("corrupt", ["constant", "duplicate"])
+def test_fit_rejects_constant_and_duplicate_columns(corrupt):
+    """A constant or exactly duplicated column makes the block covariance
+    singular: the scorer would return -inf and silently drop the block's edges.
+    Reject at input time instead."""
+    rng = np.random.default_rng(0)
+    data_dict = {
+        "obs": sample_chain_dataset(200, rng),
+        "1":   sample_chain_dataset(200, rng, shift_targets=(0, 1)),
+    }
+    if corrupt == "constant":
+        data_dict["1"][:, 2] = 3.0
+        match = "constant"
+    else:
+        data_dict["1"][:, 4] = data_dict["1"][:, 0]
+        match = "identical"
+    with pytest.raises(ValueError, match=match):
+        COARSE().fit(data_dict)
+
+
+def test_fit_degenerate_tiny_n_returns_minus_inf_no_crash():
+    """n_e <= p in every env: no block can be scored. The documented outcome is
+    a 0-edge model with score -inf, not an exception."""
+    rng = np.random.default_rng(0)
+    data_dict = {
+        "obs": sample_chain_dataset(5, rng),
+        "1":   sample_chain_dataset(5, rng, shift_targets=(0, 1)),
+    }
+    model = COARSE().fit(data_dict)
+    assert model.score == -np.inf
+    assert model.dag.number_of_edges() == 0
+
+
+def test_fit_baseline_only_single_block():
+    """With no interventional env, M has zero columns: every variable shares the
+    (empty) row, so the partition is a single block with no parents."""
+    rng = np.random.default_rng(0)
+    model = COARSE().fit({"obs": sample_chain_dataset(500, rng)})
+    assert model.M.shape == (6, 0)
+    assert model.partition == [frozenset(range(6))]
+    assert model.dag.number_of_edges() == 0
+    assert np.isfinite(model.score)
+
+
+def test_coarse_oracle_rejects_M_row_mismatch():
+    """M must have exactly one row per variable: fewer rows would silently drop
+    variables from the DAG, more rows would index past the data."""
+    rng = np.random.default_rng(0)
+    data_dict = {
+        "obs": sample_chain_dataset(300, rng),
+        "1":   sample_chain_dataset(300, rng, shift_targets=(0, 1)),
+    }
+    M_short = np.array([[1], [1], [0], [0]], dtype=bool)          # 4 rows, p=6
+    M_long = np.array([[1], [1], [0], [0], [0], [0], [0], [0]], dtype=bool)
+    with pytest.raises(ValueError, match="rows|shape"):
+        COARSEOracle().fit(infer_partition(M_short), M_short, ["1"], data_dict)
+    with pytest.raises(ValueError, match="rows|shape"):
+        COARSEOracle().fit(infer_partition(M_long), M_long, ["1"], data_dict)
+
+
+def test_coarse_oracle_rejects_env_order_mismatch():
+    rng = np.random.default_rng(0)
+    data_dict = {
+        "obs": sample_chain_dataset(300, rng),
+        "1":   sample_chain_dataset(300, rng, shift_targets=(0, 1)),
+    }
+    M = np.array([[1], [1], [0], [0], [0], [0]], dtype=bool)
+    with pytest.raises(ValueError, match="env_order"):
+        COARSEOracle().fit(infer_partition(M), M, ["1", "2"], data_dict)
 
 
 def test_vectorized_gaussian_lrt_matches_scalar_large_offset():
@@ -574,6 +644,25 @@ def test_algorithm_3_coarse_oracle_chain():
     assert set(model.dag.edges) == {(A, B), (B, C)}
 
 
+def test_algorithm_3_coarse_full_pipeline_chain():
+    """Same chain as the oracle test, but M and the partition are *estimated*
+    from the data. Pins the full pipeline (tests → partition → grow-shrink)."""
+    rng = np.random.default_rng(0)
+    n_per_env = 1500
+    data_dict = {
+        "obs": sample_chain_dataset(n_per_env, rng),
+        "1": sample_chain_dataset(n_per_env, rng, shift_targets=(0, 1)),
+        "2": sample_chain_dataset(n_per_env, rng, shift_targets=(2, 3)),
+        "3": sample_chain_dataset(n_per_env, rng, shift_targets=(4, 5)),
+    }
+    model = COARSE().fit(data_dict, alpha=1e-4, refine_test="welch")
+
+    A, B, C = (0, 1), (2, 3), (4, 5)
+    assert set(model.partition) == {frozenset(A), frozenset(B), frozenset(C)}
+    assert set(model.dag.edges) == {(A, B), (B, C)}
+    assert np.isfinite(model.score)
+
+
 # ---------------------------------------------------------------------------
 # Test 5 — sempler end-to-end integration
 # ---------------------------------------------------------------------------
@@ -641,6 +730,10 @@ def test_intervention_sempler():
         est_labels[list(part)] = label
     ari = adjusted_rand_score(true_labels, est_labels)
     assert ari >= 0.5, f"Partition ARI {ari} below threshold"
+
+    # 3. Parents have strictly smaller support than children, so the block DAG
+    #    is acyclic by construction.
+    assert nx.is_directed_acyclic_graph(coarse_model.dag)
 
 
 # ---------------------------------------------------------------------------
@@ -730,15 +823,37 @@ def test_kpc_coarse_backward_compat():
 
 def test_kpc_coarse_full_rank_matches_standard():
     """When k >= max block size, PCA is a rotation and BIC is invariant.
-    The kPC path z-scores internally, so the standard fit gets pre-z-scored data."""
+    The kPC path scales every env by the observational std internally, so the
+    standard fit gets data pre-scaled the same way."""
     data_dict, partition, M, env_order = _chain_oracle_fixtures()
     max_block = max(len(b) for b in partition)
-    scaled = {ek: (X - X.mean(0)) / X.std(0) for ek, X in data_dict.items()}
+    obs_std = data_dict["obs"].std(0)
+    scaled = {ek: (X - X.mean(0)) / obs_std for ek, X in data_dict.items()}
     std = COARSEOracle(rng=np.random.default_rng(0)).fit(
         partition, M, env_order, scaled,
     )
     pca = COARSEOracle(rng=np.random.default_rng(0)).fit(
         partition, M, env_order, data_dict, k=max_block,
+    )
+    assert set(std.dag.edges) == set(pca.dag.edges)
+    np.testing.assert_allclose(std.score, pca.score, rtol=1e-10)
+
+
+def test_kpc_scaling_uses_observational_std():
+    """The kPC path must scale every env by the *observational* std, not each
+    env's own: with a variance-inflating env, a full-rank kPC fit must equal a
+    plain fit on obs-std-scaled data (per-env scaling would not)."""
+    data_dict, partition, M, env_order = _chain_oracle_fixtures()
+    data_dict = {ek: X.copy() for ek, X in data_dict.items()}
+    data_dict["2"][:, [2, 3]] *= 3.0  # inflate block B's variance in env "2"
+    obs_std = data_dict["obs"].std(0)
+    scaled = {ek: (X - X.mean(0)) / obs_std for ek, X in data_dict.items()}
+
+    std = COARSEOracle(rng=np.random.default_rng(0)).fit(
+        partition, M, env_order, scaled,
+    )
+    pca = COARSEOracle(rng=np.random.default_rng(0)).fit(
+        partition, M, env_order, data_dict, k=2,
     )
     assert set(std.dag.edges) == set(pca.dag.edges)
     np.testing.assert_allclose(std.score, pca.score, rtol=1e-10)
