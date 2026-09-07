@@ -1,6 +1,6 @@
 """Compute partitions, support and candidate parents pool from M.
 
-`infer_partition` returns the row-class partition Π_E of M .
+`infer_partition` returns the sorted row-class partition Π_E of M .
 `compute_supports` reads supp(π) from Definition 10 .
 `compute_candidate_pools` builds Pa⋆(π) from Corollary 1 .
 """
