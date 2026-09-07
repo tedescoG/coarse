@@ -271,11 +271,11 @@ class COARSECV:
                 "(n_e per env, |block| relative to test-fold size)"
             )
 
-        # Argmax over finite sums; tiebreak picks the larger α.
+        # tiebreak picks the smaller alpha
         best_i = int(
             max(
                 (i for i in range(len(alpha_grid)) if np.isfinite(sums[i])),
-                key=lambda i: (sums[i], alpha_grid[i]),
+                key=lambda i: (sums[i], -alpha_grid[i]),
             )
         )
         best_alpha = alpha_grid[best_i]
