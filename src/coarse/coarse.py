@@ -82,6 +82,8 @@ def _normalize_data_dict(
     Each env value may be a bare 2-D array, a ``(data, targets, type)`` tuple,
     or a ``{"data": ...}`` dict. Intervention targets and intervention-type
     strings are accepted-and-ignored: COARSE reads only the data array.
+
+    Raise an exception if at least one environment has duplicated or constant columns.
     """
     if baseline_key not in data_dict:
         raise ValueError(
@@ -97,8 +99,29 @@ def _normalize_data_dict(
             raise ValueError(
                 f"env {key!r} has {arr.shape[1]} columns; expected {p_ref}"
             )
+        _check_columns_non_degenerate(key, arr)
         out[key] = arr
     return out, baseline_key
+
+
+def _check_columns_non_degenerate(key: EnvKey, arr: np.ndarray) -> None:
+    """Raise ``ValueError`` if ``arr`` has a constant column or two exactly
+    identical columns."""
+    constant = np.flatnonzero(np.ptp(arr, axis=0) == 0.0)
+    if constant.size:
+        raise ValueError(
+            f"env {key!r}: column(s) {constant.tolist()} are constant"
+        )
+    p = arr.shape[1]
+    if p < 2:
+        return
+    # Sort columns lexicographically; duplicates become adjacent.
+    order = np.lexsort(arr[::-1])
+    cols = arr[:, order]
+    dup = np.flatnonzero(np.all(cols[:, 1:] == cols[:, :-1], axis=0))
+    if dup.size:
+        i, j = sorted((int(order[dup[0]]), int(order[dup[0] + 1])))
+        raise ValueError(f"env {key!r}: columns {i} and {j} are identical")
 
 
 def _materialize_dag(
@@ -141,17 +164,18 @@ def _run_score_phase(
     Centers each env's data once per fit before scoring: `block_residual_covariance`
     (and everything downstream of it) assumes column-centered input.
 
-    When ``k`` is not None, additionally Z-scores each env's columns:
-    without it, high-variance variables dominate the singular vectors.
+    When ``k`` is not None (running kPC-COARSE), scales every env's columns by the
+    *observational* standard deviation.
     """
     centered_env_arrays: dict[EnvKey, np.ndarray] = {
         ek: v - v.mean(axis=0, keepdims=True) for ek, v in env_arrays.items()
     }
     if k is not None:
-        for ek, v in centered_env_arrays.items():
-            sigma = v.std(axis=0, keepdims=True)
-            sigma = np.where(sigma > 0.0, sigma, 1.0)
-            centered_env_arrays[ek] = v / sigma
+        # Constant columns are rejected by `_normalize_data_dict`, so obs_std > 0.
+        obs_std = centered_env_arrays[baseline_key].std(axis=0, keepdims=True)
+        centered_env_arrays = {
+            ek: v / obs_std for ek, v in centered_env_arrays.items()
+        }
 
     # Supports & candidate pools always from original partition + M.
     supports = compute_supports(M, partition)
@@ -332,6 +356,16 @@ class COARSEOracle:
         start = time.perf_counter()
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
         M = np.asarray(M, dtype=bool)
+        p = env_arrays[baseline_key].shape[1]
+        # check M has the same number of rows as variable considered.
+        if M.ndim != 2 or M.shape[0] != p:
+            raise ValueError(
+                f"M has shape {M.shape}; expected ({p}, |E|-1) for {p} variables"
+            )
+        if len(env_order) != M.shape[1]:
+            raise ValueError(
+                f"env_order has {len(env_order)} entries; M has {M.shape[1]} columns"
+            )
         canonical = infer_partition(M)
         if set(partition) != set(canonical):
             raise ValueError("partition must be the row-class partition of M")
