@@ -1,7 +1,4 @@
 """Tests for the COARSE package.
-
-Each test maps to a specific Algorithm or section of the thesis draft so the
-implementation can be verified against the math piece-by-piece.
 """
 
 from __future__ import annotations
@@ -27,13 +24,10 @@ import networkx as nx
 from conftest import sample_chain_dataset
 
 
-# ---------------------------------------------------------------------------
-# Reference implementations moved from scoring.py.
-# These operate on raw (n_e, p) arrays and serve as correctness oracles for
-# the production cached-covariance path.
-# ---------------------------------------------------------------------------
+
+# Reference implementations for testing statistics caching.
 def block_residual_covariance(X_block, X_parents):
-    """Equation 11 — block residual covariance from raw arrays."""
+    """Block residual covariance from raw data."""
     n_e = X_block.shape[0]
     S_jj = (X_block.T @ X_block) / n_e
     if X_parents.size == 0 or X_parents.shape[1] == 0:
@@ -57,7 +51,7 @@ def block_log_det_residual(X_block, X_parents):
 
 
 def block_bic_env(X_block, X_parents, lambda_pen=1.0):
-    """Per-environment BIC for one block (Equations 12 + 21)."""
+    """Per-environment BIC for one block."""
     n_e = X_block.shape[0]
     r_j = X_block.shape[1]
     s_j = X_parents.shape[1] if X_parents.size else 0
@@ -75,7 +69,7 @@ def block_bic_env(X_block, X_parents, lambda_pen=1.0):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — Algorithm 1 (RefineAux), draft p. 10
+# Test 1 — Build M (aka DescendantTest)
 # ---------------------------------------------------------------------------
 def test_algorithm_1_refineaux_population():
     """Welch must catch mean shifts but miss pure variance shifts;
@@ -138,7 +132,7 @@ def test_compute_M_rejects_inconsistent_p():
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — Algorithm 2 (RefineTest), draft p. 11
+# Test 2 — Partition refinement
 # ---------------------------------------------------------------------------
 _M_HANDCODED = np.array(
     [
@@ -196,7 +190,7 @@ def test_compute_candidate_pools_handcoded():
 
 
 def test_infer_partition_order_respects_supp_inclusion():
-    """`infer_partition` owns the block ordering τ: π_a must precede π_b
+    """`infer_partition` applies the block ordering τ: π_a must precede π_b
     whenever supp(π_a) ⊊ supp(π_b)."""
     tau = infer_partition(_M_HANDCODED)
     # block {3} (|supp|=0) must come first; the two |supp|=2 blocks come after,
@@ -212,10 +206,10 @@ def test_infer_partition_order_respects_supp_inclusion():
 
 
 # ---------------------------------------------------------------------------
-# Scoring tests — Equations 11, 12, 20, 21, 23 (draft pp. 16, 17, 21, 23)
+# Scoring tests
 # ---------------------------------------------------------------------------
 def test_parameter_count_eq_20():
-    """d_j = r_j·s_j + r_j(r_j+1)/2 per Equation 20."""
+    """d_j = r_j·s_j + r_j(r_j+1)/2."""
     # r_j=2 block, s_j=3 parents total:
     # regression entries = 2*3 = 6; covariance entries = 2*3/2 = 3 → d_j = 9
     assert parameter_count_d_j(2, 3) == 9
@@ -237,8 +231,7 @@ def test_block_residual_covariance_no_parents_is_sample_cov():
 
 def test_sign_convention_true_parents_score_higher():
     """Sanity check: in a known linear-Gaussian setup, BIC of the true parent
-    set must exceed BIC of the empty parent set. This is the load-bearing
-    sign check — if it's wrong, every grow-shrink decision is inverted."""
+    set must exceed BIC of the empty parent set."""
     rng = np.random.default_rng(42)
     n = 2000
     X_parent = rng.standard_normal((n, 2))
@@ -254,7 +247,7 @@ def test_sign_convention_true_parents_score_higher():
 
 
 def test_pooled_block_bic_sums_envs():
-    """Equation 23: BIC_j(π_j, Pa_j) = Σ_e BIC_j^e(π_j, Pa_j)."""
+    """BIC_j(π_j, Pa_j) = Σ_e BIC_j^e(π_j, Pa_j)."""
     rng = np.random.default_rng(7)
     n_per_env = 500
     X_pa = rng.standard_normal((2 * n_per_env, 1))
@@ -279,14 +272,13 @@ def test_pooled_block_bic_sums_envs():
 
 
 def test_numerical_stability_near_singular():
-    """Test 6: near-rank-deficient parent covariance.
+    """Test for near-rank-deficient parent covariance.
 
     Two parent blocks that are essentially the same data (with tiny noise) give
     a numerically singular parent-block covariance. block_bic_env /
     pooled_block_bic must either return a finite value (when bare Cholesky
     still succeeds despite the conditioning) or -inf (when Cholesky fails and
-    LinAlgError is caught and translated). Either is acceptable; what matters
-    is that the call does not crash.
+    LinAlgError is caught and translated). Either is acceptable.
     """
     rng = np.random.default_rng(0)
     n = 200
@@ -310,7 +302,7 @@ def test_numerical_stability_near_singular():
 
 
 def test_block_bic_env_undersized_env_returns_minus_inf():
-    """Remark 6: n_e <= s_j + r_j is ill-posed -> -inf, no crash."""
+    """Check n_e <= s_j + r_j is ill-posed -> -inf, no crash."""
     rng = np.random.default_rng(0)
     # n=3 observations, r_j=2, s_j=5 → 3 < 7
     X_block = rng.standard_normal((3, 2))
@@ -320,12 +312,11 @@ def test_block_bic_env_undersized_env_returns_minus_inf():
 
 
 def test_pooled_block_bic_from_sigma_matches_public_path():
-    """Tier-1 refactor parity: the cached-covariance path
-    (`_pooled_block_bic_from_sigma`) must agree with the original
+    """Check parity of the cached-covariance path
+    (`_pooled_block_bic_from_sigma`) and the original
     direct-array path (`pooled_block_bic`) at `rtol=1e-10` across every
-    grow-shrink-relevant branch — no parents, one parent block, two parent
-    blocks, singleton target — plus the -inf short-circuit when
-    n_e <= s_j + r_j. Catches any slice-vs-resum BLAS divergence."""
+    grow-shrink-relevant cases — no parents, one parent block, two parent
+    blocks, singleton target. Catches any slice-vs-resum BLAS divergence."""
     from coarse.scoring import compute_env_stats, pooled_block_bic_from_sigma
 
     rng = np.random.default_rng(2026)
@@ -375,7 +366,7 @@ def test_pooled_block_bic_from_sigma_matches_public_path():
 
 
 def test_coarse_oracle_score_invariant_under_refactor():
-    """Integration guard for the Tier-1 refactor. `COARSEOracle().fit(...).score`
+    """`COARSEOracle().fit(...).score`
     must remain finite and the inferred DAG must still recover the chain
     A → B → C."""
     rng = np.random.default_rng(0)
@@ -438,9 +429,7 @@ def test_fit_rejects_bad_input(corrupt):
 
 @pytest.mark.parametrize("corrupt", ["constant", "duplicate"])
 def test_fit_rejects_constant_and_duplicate_columns(corrupt):
-    """A constant or exactly duplicated column makes the block covariance
-    singular: the scorer would return -inf and silently drop the block's edges.
-    Reject at input time instead."""
+    """test input-time rejection of constant or exactly duplicated columns."""
     rng = np.random.default_rng(0)
     data_dict = {
         "obs": sample_chain_dataset(200, rng),
@@ -457,8 +446,7 @@ def test_fit_rejects_constant_and_duplicate_columns(corrupt):
 
 
 def test_fit_degenerate_tiny_n_returns_minus_inf_no_crash():
-    """n_e <= p in every env: no block can be scored. The documented outcome is
-    a 0-edge model with score -inf, not an exception."""
+    """check n_e <= p in every env: no block can be scored, output -inf."""
     rng = np.random.default_rng(0)
     data_dict = {
         "obs": sample_chain_dataset(5, rng),
@@ -481,8 +469,7 @@ def test_fit_baseline_only_single_block():
 
 
 def test_coarse_oracle_rejects_M_row_mismatch():
-    """M must have exactly one row per variable: fewer rows would silently drop
-    variables from the DAG, more rows would index past the data."""
+    """M must have exactly one row per variable."""
     rng = np.random.default_rng(0)
     data_dict = {
         "obs": sample_chain_dataset(300, rng),
@@ -519,7 +506,7 @@ def test_vectorized_gaussian_lrt_matches_scalar_large_offset():
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — Algorithm 4 (GrowShrink), draft p. 28
+# Test 4 — (GrowShrink)
 # ---------------------------------------------------------------------------
 def test_algorithm_4_growshrink_unit():
     """grow_shrink must return the true parent blocks {{2}, {3}} and reject the
@@ -571,9 +558,7 @@ def test_growshrink_empty_pool_returns_empty():
 
 
 def test_growshrink_pooled_across_envs():
-    """The grow-shrink decision should consider summed-over-env BIC, not
-    per-env. We construct two envs where neither one alone has enough power to
-    distinguish the right candidate, but together they do."""
+    """The grow-shrink decision should consider summed-over-env BIC."""
     rng_data = np.random.default_rng(0)
     n = 1000
     X_pa_obs = rng_data.standard_normal(n)
@@ -597,7 +582,7 @@ def test_growshrink_pooled_across_envs():
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — Algorithm 3 (COARSE driver) end-to-end, oracle inputs
+# Test 3 — End-to-end COARSE + Oracle
 # ---------------------------------------------------------------------------
 def test_algorithm_3_coarse_oracle_chain():
     """Three-block chain A → B → C. With M and partition fed as ground truth,
@@ -646,7 +631,7 @@ def test_algorithm_3_coarse_oracle_chain():
 
 def test_algorithm_3_coarse_full_pipeline_chain():
     """Same chain as the oracle test, but M and the partition are *estimated*
-    from the data. Pins the full pipeline (tests → partition → grow-shrink)."""
+    from the data. Check the full pipeline (tests → partition → grow-shrink)."""
     rng = np.random.default_rng(0)
     n_per_env = 1500
     data_dict = {
@@ -667,8 +652,7 @@ def test_algorithm_3_coarse_full_pipeline_chain():
 # Test 5 — sempler end-to-end integration
 # ---------------------------------------------------------------------------
 def test_intervention_sempler():
-    """End-to-end smoke test on sempler-generated synthetic data. The
-    generator parameters are fixed so any drift in recovery is detectable."""
+    """End-to-end smoke test on sempler-generated synthetic data."""
     from sempler import LGANM
     from sempler.generators import dag_avg_deg, intervention_targets
     from sklearn.metrics import adjusted_rand_score
@@ -840,9 +824,6 @@ def test_kpc_coarse_full_rank_matches_standard():
 
 
 def test_kpc_scaling_uses_observational_std():
-    """The kPC path must scale every env by the *observational* std, not each
-    env's own: with a variance-inflating env, a full-rank kPC fit must equal a
-    plain fit on obs-std-scaled data (per-env scaling would not)."""
     data_dict, partition, M, env_order = _chain_oracle_fixtures()
     data_dict = {ek: X.copy() for ek, X in data_dict.items()}
     data_dict["2"][:, [2, 3]] *= 3.0  # inflate block B's variance in env "2"

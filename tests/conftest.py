@@ -1,10 +1,4 @@
 """Shared fixtures for the coarse test suite.
-
-pytest discovers conftest.py automatically and adds its directory to sys.path,
-so `from conftest import sample_chain_dataset` resolves cleanly from any test
-file in this directory. This is the idiomatic place for shared fixtures —
-unlike `from test_coarse import ...`, which IS brittle under pytest collection
-order.
 """
 from __future__ import annotations
 
@@ -20,8 +14,7 @@ def sample_chain_dataset(
         A = {v0, v1}  →  B = {v2, v3}  →  C = {v4, v5}
 
     ``shift_targets`` lists variable indices that receive a soft mean shift of
-    +2. Coefficients and noise levels are domain-reasonable, not tuned to make
-    any particular partition recovery succeed.
+    +2.
     """
     shift = np.zeros(6)
     for i in shift_targets:
