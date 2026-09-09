@@ -1,20 +1,36 @@
-"""CausalChamber experiment — COARSE / COARSE-1PC / RePaRe on the light tunnel.
+"""CausalChamber experiment — COARSE / RePaRe / GIES / GnIES / UT-IGSP on the
+light tunnel.
 
-Mirrors `repare-0.2.0/src/expt/workflow/rules/causalchamber.smk` but swaps the
-method set (drops GIES/GnIES/UT-IGSP, adds COARSE and COARSE-1PC) and persists
-no model pickles. The preprocessed dataset still uses .pkl, but per-fit outputs
-are only metrics.csv / params.json / dag.png — the aggregator works from JSON
-and never imports `repare`.
+Superset of `repare-0.2.0/src/expt/workflow/rules/causalchamber.smk`: same
+dataset, ground truth and baseline calls, plus COARSE, and every method run on
+both intervention regimes (grouped: obs + rgb + pol; ungrouped: obs +
+single-variable experiments). One α grid (`ALPHAS`) is shared by every
+α-tuned method: COARSE's CV / oracle, RePaRe (× β) and UT-IGSP (× α_inv).
+No model pickles are persisted — per-fit outputs are metrics.csv /
+*_params.json / *_dag.png, and the aggregator works from JSON without
+importing `repare`.
+
+Per-method directory contract (read by causalchamber_aggregate.py):
+    results/causalchamber/<method>_<mode>/{metrics.csv, score_params.json, score_dag.png}
+    + {oracle_params.json, oracle_dag.png} for methods with a hyperparameter grid.
 """
 
 from snakemake.io import directory
 
 ALPHAS = [1e-4, 1e-3, 1e-2, 0.1]
-LAMBDAS = [0.5, 1.0, 2.0, 4.0]
 BETAS = [1e-4, 1e-3, 1e-2, 0.1]
-# BIC is not comparable across λ (smaller penalty ⇒ higher score), so every
-# data-driven selection and the CV run use this fixed λ (standard BIC).
+# λ is never swept: BIC is not comparable across λ, so COARSE runs at the
+# standard BIC penalty and only α is tuned (score: 10-fold CV; oracle: best
+# grid cell against ground truth) — the same one-threshold design as RePaRe.
 FIXED_LAMBDA = 1.0
+CV_N_FOLDS = 10
+# Stage-1 test: Gaussian mean + variance LRT, the test RePaRe's `assume="gaussian"`
+# path runs (its `refine_test="ks"` argument is inert under that assumption).
+COARSE_REFINE_TEST = "gaussian_lrt"
+# GnIES: per-env row cap inherited from RePaRe's experiment. Override for a
+# quick wiring check with `--config gnies_max_rows=200` (the rule re-runs when
+# the param changes, so the real run is not contaminated).
+GNIES_MAX_ROWS = int(config.get("gnies_max_rows", 2000))
 
 DATASET = "lt_interventions_standard_v1"
 CHAMBER = "lt"
@@ -36,20 +52,28 @@ PREP_FILES = {
     "singleenvdata": BASE + "preprocessed/singleenvdata.pkl",
 }
 
+CC_MODES = ["grouped", "ungrouped"]
+# Methods with a hyperparameter grid emit an oracle row; GIES / GnIES do not.
+CC_METHOD_SELECTIONS = {
+    "coarse": ["score", "oracle"],
+    "repare": ["score", "oracle"],
+    "gies": ["score"],
+    "gnies": ["score"],
+    "utigsp": ["score", "oracle"],
+}
+
+
+def cc_outputs_for(method, selections):
+    out = {"metrics_csv": BASE + method + "_{mode}/metrics.csv"}
+    for sel in selections:
+        out[f"{sel}_dag"] = BASE + method + "_{mode}/" + sel + "_dag.png"
+        out[f"{sel}_params"] = BASE + method + "_{mode}/" + sel + "_params.json"
+    return out
+
 
 rule causalchamber_prepare:
     output:
-        blocks=PREP_FILES["blocks"],
-        features=PREP_FILES["features"],
-        partition=PREP_FILES["partition"],
-        grouptargets=PREP_FILES["grouptargets"],
-        truegraph=PREP_FILES["truegraph"],
-        truelabels=PREP_FILES["truelabels"],
-        truedagfull=PREP_FILES["truedagfull"],
-        nametoidx=PREP_FILES["nametoidx"],
-        singleenvlabels=PREP_FILES["singleenvlabels"],
-        singleenvtargets=PREP_FILES["singleenvtargets"],
-        singleenvdata=PREP_FILES["singleenvdata"],
+        **PREP_FILES,
     params:
         dataset=DATASET,
         chamber=CHAMBER,
@@ -60,134 +84,24 @@ rule causalchamber_prepare:
 
 
 # ---------------------------------------------------------------------------
-# COARSE — α × λ grid, soft interventions, no PCA on parent blocks.
+# COARSE — α grid at λ=1: oracle row = best cell vs ground truth; score row =
+# one COARSECV fit (α̂ by K-fold held-out likelihood over the same grid).
 # ---------------------------------------------------------------------------
 
 
-rule causalchamber_coarse_grouped:
+rule causalchamber_coarse:
     input:
         **PREP_FILES,
     output:
-        metrics_csv=BASE + "coarse_grouped/metrics.csv",
-        score_dag=BASE + "coarse_grouped/score_dag.png",
-        oracle_dag=BASE + "coarse_grouped/oracle_dag.png",
-        score_params=BASE + "coarse_grouped/score_params.json",
-        oracle_params=BASE + "coarse_grouped/oracle_params.json",
+        **cc_outputs_for("coarse", CC_METHOD_SELECTIONS["coarse"]),
     params:
         alphas=ALPHAS,
-        lambdas=LAMBDAS,
-        score_lambda=FIXED_LAMBDA,
-        mode="grouped",
-        k="None",
-    script:
-        "../scripts/causalchamber_coarse.py"
-
-
-rule causalchamber_coarse_ungrouped:
-    input:
-        **PREP_FILES,
-    output:
-        metrics_csv=BASE + "coarse_ungrouped/metrics.csv",
-        score_dag=BASE + "coarse_ungrouped/score_dag.png",
-        oracle_dag=BASE + "coarse_ungrouped/oracle_dag.png",
-        score_params=BASE + "coarse_ungrouped/score_params.json",
-        oracle_params=BASE + "coarse_ungrouped/oracle_params.json",
-    params:
-        alphas=ALPHAS,
-        lambdas=LAMBDAS,
-        score_lambda=FIXED_LAMBDA,
-        mode="ungrouped",
-        k="None",
-    script:
-        "../scripts/causalchamber_coarse.py"
-
-
-# ---------------------------------------------------------------------------
-# COARSE-1PC — same α × λ grid, k=1.
-# ---------------------------------------------------------------------------
-
-
-rule causalchamber_onepc_grouped:
-    input:
-        **PREP_FILES,
-    output:
-        metrics_csv=BASE + "onepc_grouped/metrics.csv",
-        score_dag=BASE + "onepc_grouped/score_dag.png",
-        oracle_dag=BASE + "onepc_grouped/oracle_dag.png",
-        score_params=BASE + "onepc_grouped/score_params.json",
-        oracle_params=BASE + "onepc_grouped/oracle_params.json",
-    params:
-        alphas=ALPHAS,
-        lambdas=LAMBDAS,
-        score_lambda=FIXED_LAMBDA,
-        mode="grouped",
-        k=1,
-    script:
-        "../scripts/causalchamber_coarse.py"
-
-
-rule causalchamber_onepc_ungrouped:
-    input:
-        **PREP_FILES,
-    output:
-        metrics_csv=BASE + "onepc_ungrouped/metrics.csv",
-        score_dag=BASE + "onepc_ungrouped/score_dag.png",
-        oracle_dag=BASE + "onepc_ungrouped/oracle_dag.png",
-        score_params=BASE + "onepc_ungrouped/score_params.json",
-        oracle_params=BASE + "onepc_ungrouped/oracle_params.json",
-    params:
-        alphas=ALPHAS,
-        lambdas=LAMBDAS,
-        score_lambda=FIXED_LAMBDA,
-        mode="ungrouped",
-        k=1,
-    script:
-        "../scripts/causalchamber_coarse.py"
-
-
-# ---------------------------------------------------------------------------
-# COARSE-CV — single λ=FIXED_LAMBDA; α selected by 10-fold CV from CV_ALPHA_GRID
-# (mirrors RePaRe's β selection: one tuned threshold, penalty fixed). k=None.
-# ---------------------------------------------------------------------------
-
-CV_ALPHA_GRID = [1e-4, 1e-3, 1e-2, 0.05, 0.1]
-CV_N_FOLDS = 10
-
-
-rule causalchamber_cv_grouped:
-    input:
-        **PREP_FILES,
-    output:
-        metrics_csv=BASE + "cv_grouped/metrics.csv",
-        score_dag=BASE + "cv_grouped/score_dag.png",
-        oracle_dag=BASE + "cv_grouped/oracle_dag.png",
-        score_params=BASE + "cv_grouped/score_params.json",
-        oracle_params=BASE + "cv_grouped/oracle_params.json",
-    params:
         lambda_pen=FIXED_LAMBDA,
-        alpha_grid=CV_ALPHA_GRID,
         n_folds=CV_N_FOLDS,
-        mode="grouped",
+        refine_test=COARSE_REFINE_TEST,
+        mode="{mode}",
     script:
-        "../scripts/causalchamber_cv.py"
-
-
-rule causalchamber_cv_ungrouped:
-    input:
-        **PREP_FILES,
-    output:
-        metrics_csv=BASE + "cv_ungrouped/metrics.csv",
-        score_dag=BASE + "cv_ungrouped/score_dag.png",
-        oracle_dag=BASE + "cv_ungrouped/oracle_dag.png",
-        score_params=BASE + "cv_ungrouped/score_params.json",
-        oracle_params=BASE + "cv_ungrouped/oracle_params.json",
-    params:
-        lambda_pen=FIXED_LAMBDA,
-        alpha_grid=CV_ALPHA_GRID,
-        n_folds=CV_N_FOLDS,
-        mode="ungrouped",
-    script:
-        "../scripts/causalchamber_cv.py"
+        "../scripts/causalchamber_coarse.py"
 
 
 # ---------------------------------------------------------------------------
@@ -195,79 +109,95 @@ rule causalchamber_cv_ungrouped:
 # ---------------------------------------------------------------------------
 
 
-rule causalchamber_repare_grouped:
+rule causalchamber_repare:
     input:
         **PREP_FILES,
     output:
-        metrics_csv=BASE + "repare_grouped/metrics.csv",
-        score_dag=BASE + "repare_grouped/score_dag.png",
-        oracle_dag=BASE + "repare_grouped/oracle_dag.png",
-        score_params=BASE + "repare_grouped/score_params.json",
-        oracle_params=BASE + "repare_grouped/oracle_params.json",
+        **cc_outputs_for("repare", CC_METHOD_SELECTIONS["repare"]),
     params:
         alphas=ALPHAS,
         betas=BETAS,
-        mode="grouped",
-    script:
-        "../scripts/causalchamber_repare.py"
-
-
-rule causalchamber_repare_ungrouped:
-    input:
-        **PREP_FILES,
-    output:
-        metrics_csv=BASE + "repare_ungrouped/metrics.csv",
-        score_dag=BASE + "repare_ungrouped/score_dag.png",
-        oracle_dag=BASE + "repare_ungrouped/oracle_dag.png",
-        score_params=BASE + "repare_ungrouped/score_params.json",
-        oracle_params=BASE + "repare_ungrouped/oracle_params.json",
-    params:
-        alphas=ALPHAS,
-        betas=BETAS,
-        mode="ungrouped",
+        mode="{mode}",
     script:
         "../scripts/causalchamber_repare.py"
 
 
 # ---------------------------------------------------------------------------
-# Aggregator — produces the 4 headline artifacts.
+# Baselines from RePaRe's experiment — GIES (known targets), GnIES and UT-IGSP
+# (unknown targets). Calls are identical to repare-0.2.0's scripts.
 # ---------------------------------------------------------------------------
+
+
+rule causalchamber_gies:
+    input:
+        **PREP_FILES,
+    output:
+        **cc_outputs_for("gies", CC_METHOD_SELECTIONS["gies"]),
+    params:
+        mode="{mode}",
+    script:
+        "../scripts/causalchamber_gies.py"
+
+
+rule causalchamber_gnies:
+    input:
+        **PREP_FILES,
+    output:
+        **cc_outputs_for("gnies", CC_METHOD_SELECTIONS["gnies"]),
+    params:
+        mode="{mode}",
+        max_rows=GNIES_MAX_ROWS,
+    script:
+        "../scripts/causalchamber_gnies.py"
+
+
+rule causalchamber_utigsp:
+    input:
+        **PREP_FILES,
+    output:
+        **cc_outputs_for("utigsp", CC_METHOD_SELECTIONS["utigsp"]),
+    params:
+        mode="{mode}",
+        alpha_ci=ALPHAS,
+        alpha_inv=ALPHAS,
+    script:
+        "../scripts/causalchamber_utigsp.py"
+
+
+# ---------------------------------------------------------------------------
+# Aggregator — produces the headline artifacts. Input keys follow the
+# `{method}_{mode}_metrics` / `{method}_{mode}_{selection}_params` naming the
+# aggregator resolves via getattr(snakemake.input, ...).
+# ---------------------------------------------------------------------------
+
+
+def cc_aggregate_inputs():
+    inputs = {
+        "features": PREP_FILES["features"],
+        "nametoidx": PREP_FILES["nametoidx"],
+    }
+    for method, selections in CC_METHOD_SELECTIONS.items():
+        for mode in CC_MODES:
+            inputs[f"{method}_{mode}_metrics"] = BASE + f"{method}_{mode}/metrics.csv"
+            for sel in selections:
+                inputs[f"{method}_{mode}_{sel}_params"] = (
+                    BASE + f"{method}_{mode}/{sel}_params.json"
+                )
+    return inputs
 
 
 rule causalchamber_aggregate:
     input:
-        features=PREP_FILES["features"],
-        nametoidx=PREP_FILES["nametoidx"],
-        coarse_grouped_metrics=BASE + "coarse_grouped/metrics.csv",
-        coarse_ungrouped_metrics=BASE + "coarse_ungrouped/metrics.csv",
-        onepc_grouped_metrics=BASE + "onepc_grouped/metrics.csv",
-        onepc_ungrouped_metrics=BASE + "onepc_ungrouped/metrics.csv",
-        cv_grouped_metrics=BASE + "cv_grouped/metrics.csv",
-        cv_ungrouped_metrics=BASE + "cv_ungrouped/metrics.csv",
-        repare_grouped_metrics=BASE + "repare_grouped/metrics.csv",
-        repare_ungrouped_metrics=BASE + "repare_ungrouped/metrics.csv",
-        coarse_grouped_score_params=BASE + "coarse_grouped/score_params.json",
-        coarse_grouped_oracle_params=BASE + "coarse_grouped/oracle_params.json",
-        coarse_ungrouped_score_params=BASE + "coarse_ungrouped/score_params.json",
-        coarse_ungrouped_oracle_params=BASE + "coarse_ungrouped/oracle_params.json",
-        onepc_grouped_score_params=BASE + "onepc_grouped/score_params.json",
-        onepc_grouped_oracle_params=BASE + "onepc_grouped/oracle_params.json",
-        onepc_ungrouped_score_params=BASE + "onepc_ungrouped/score_params.json",
-        onepc_ungrouped_oracle_params=BASE + "onepc_ungrouped/oracle_params.json",
-        cv_grouped_score_params=BASE + "cv_grouped/score_params.json",
-        cv_grouped_oracle_params=BASE + "cv_grouped/oracle_params.json",
-        cv_ungrouped_score_params=BASE + "cv_ungrouped/score_params.json",
-        cv_ungrouped_oracle_params=BASE + "cv_ungrouped/oracle_params.json",
-        repare_grouped_score_params=BASE + "repare_grouped/score_params.json",
-        repare_grouped_oracle_params=BASE + "repare_grouped/oracle_params.json",
-        repare_ungrouped_score_params=BASE + "repare_ungrouped/score_params.json",
-        repare_ungrouped_oracle_params=BASE + "repare_ungrouped/oracle_params.json",
+        **cc_aggregate_inputs(),
     output:
         grid_metrics=BASE + "grid_metrics.csv",
         dag=BASE + "dag.png",
         grid_dir=directory(BASE + "grid_runs"),
         summary="results/causalchamber_summary.csv",
         dag_summary="results/causalchamber_dags.txt",
+    params:
+        method_selections=CC_METHOD_SELECTIONS,
+        modes=CC_MODES,
     script:
         "../scripts/causalchamber_aggregate.py"
 

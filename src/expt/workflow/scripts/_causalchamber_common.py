@@ -8,7 +8,10 @@ import from outside `src/expt/workflow/scripts/`."
 All helpers operate on `nx.DiGraph` objects whose nodes are `tuple[int, ...]`
 (sorted indices into the kept-feature list) — the `coarse.COARSE.dag`
 convention (see `_materialize_dag` in `coarse/coarse.py`), which every method
-in the experiment is coerced to before evaluation.
+in the experiment is coerced to before evaluation. Atomic-output baselines
+(GIES / GnIES / UT-IGSP) are coerced through `adjacency_to_singleton_dag`, whose
+singleton blocks make `partition_edge_metrics` collapse to RePaRe's plain
+directed-edge metric and `skeleton_edge_metrics` to its skeleton metric.
 """
 from __future__ import annotations
 
@@ -53,6 +56,187 @@ def partition_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph) -> dic
     recall = tp / len(true_edge_partition.edges) if true_edge_partition.edges else 1.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     return {"precision": precision, "recall": recall, "f1": f1}
+
+
+def _prf(tp: int, n_est: int, n_true: int) -> dict:
+    precision = tp / n_est if n_est else 1.0
+    recall = tp / n_true if n_true else 1.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return {"precision": precision, "recall": recall, "f1": f1}
+
+
+def directed_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph) -> dict:
+    """Order-independent directed block-edge precision/recall/F1.
+
+    Unlike `partition_edge_metrics`, which only inspects block pairs that go
+    *forward* in node insertion order (valid for a topologically sorted
+    partition DAG, but it silently drops every true edge running backward in
+    that order), this checks every ordered pair `(pa, ch)`, `pa != ch`: a true
+    block edge exists iff some atomic `u -> v`, `u ∈ pa`, `v ∈ ch`, is in
+    `true_graph`. For singleton blocks this is exactly RePaRe's
+    `graph_edge_metrics` (the GIES / UT-IGSP native metric): every atomic true
+    edge is in the recall denominator and every estimated edge is matched
+    regardless of index order.
+    """
+    nodes = list(model_dag.nodes)
+    true_edges = {
+        (pa, ch)
+        for pa in nodes
+        for ch in nodes
+        if pa != ch and any(true_graph.has_edge(u, v) for u in pa for v in ch)
+    }
+    est_edges = set(model_dag.edges)
+    return _prf(len(est_edges & true_edges), len(est_edges), len(true_edges))
+
+
+def skeleton_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph) -> dict:
+    """Orientation-free counterpart of `partition_edge_metrics`.
+
+    Estimated and true edges are collapsed to unordered block pairs
+    `frozenset({pa, ch})`; a true pair exists iff some atomic edge crosses the
+    two blocks in either direction. For singleton blocks this is exactly
+    RePaRe's `skeleton_metrics` (GnIES' native metric).
+    """
+    nodes = list(model_dag.nodes)
+    true_pairs = set()
+    for i, a in enumerate(nodes[:-1]):
+        for b in nodes[i + 1 :]:
+            if any(
+                true_graph.has_edge(u, v) or true_graph.has_edge(v, u)
+                for u in a
+                for v in b
+            ):
+                true_pairs.add(frozenset((a, b)))
+    est_pairs = {frozenset(edge) for edge in model_dag.edges}
+    return _prf(len(est_pairs & true_pairs), len(est_pairs), len(true_pairs))
+
+
+NATIVE_METRIC_TYPES = ("partition", "edges", "skeleton")
+
+
+def all_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph, native: str) -> dict:
+    """Directed + skeleton block-collapsed metrics for one estimate.
+
+    `native` is RePaRe's `metric_type` label for the method and selects which
+    of RePaRe's metric functions fills the plain `precision` / `recall` / `f1`
+    keys, so the summary reproduces RePaRe's Table 1 numbers:
+        "partition" (COARSE / RePaRe) → `partition_edge_metrics` (forward pairs only)
+        "edges"     (GIES / UT-IGSP)  → `directed_edge_metrics` (== `graph_edge_metrics`)
+        "skeleton"  (GnIES)           → `skeleton_edge_metrics` (== `skeleton_metrics`)
+    `dir_*` / `skel_*` are the order-independent directed and skeleton
+    collapses for every method — the cross-method comparison columns. For
+    partition methods `dir_*` can be below the native triple when the
+    estimated block order runs against a true edge (forward-only never
+    counts that edge as missed; the all-pairs collapse does).
+    """
+    if native not in NATIVE_METRIC_TYPES:
+        raise ValueError(f"native must be one of {NATIVE_METRIC_TYPES}, got {native!r}")
+    directed = directed_edge_metrics(model_dag, true_graph)
+    skeleton = skeleton_edge_metrics(model_dag, true_graph)
+    native_triple = {
+        "partition": lambda: partition_edge_metrics(model_dag, true_graph),
+        "edges": lambda: directed,
+        "skeleton": lambda: skeleton,
+    }[native]()
+    out = {"metric_type": native}
+    out.update({f"dir_{k}": v for k, v in directed.items()})
+    out.update({f"skel_{k}": v for k, v in skeleton.items()})
+    out.update(native_triple)
+    return out
+
+
+def adjacency_to_singleton_dag(adj: np.ndarray) -> nx.DiGraph:
+    """Coerce a p×p adjacency matrix to the block-DAG convention with
+    singleton blocks `(i,)`.
+
+    Every nonzero `adj[i, j]` becomes the edge `(i,) -> (j,)`. GIES / GnIES
+    return I-essential graphs in which an undirected edge is stored as both
+    `adj[i, j]` and `adj[j, i]`; both directed edges are kept, matching how
+    RePaRe's wrappers score them (so one of the two is a false positive under
+    the directed metric — use `skeleton_edge_metrics` for the orientation-free
+    view).
+    """
+    adj = np.asarray(adj)
+    dag = nx.DiGraph()
+    dag.add_nodes_from((i,) for i in range(adj.shape[0]))
+    for i, j in zip(*np.nonzero(adj)):
+        dag.add_edge((int(i),), (int(j),))
+    return dag
+
+
+def gaussian_bic_score(data: np.ndarray, graph: nx.DiGraph) -> float:
+    """Gaussian BIC of `graph` (atomic integer nodes) on `data`; lower is
+    better. Lifted from RePaRe's `causalchamber_utigsp.py` and used only for
+    UT-IGSP's data-driven grid selection on the observational sample."""
+    if data.size == 0 or graph.number_of_nodes() == 0:
+        return float("inf")
+    n_samples = data.shape[0]
+    total_ll = 0.0
+    total_params = 0
+    eps = 1e-12
+    for node in sorted(graph.nodes):
+        parents = list(graph.predecessors(node))
+        y = data[:, node]
+        if parents:
+            X_aug = np.column_stack([np.ones(n_samples), data[:, parents]])
+            beta, *_ = np.linalg.lstsq(X_aug, y, rcond=None)
+            resid = y - X_aug @ beta
+            params = len(parents) + 1
+        else:
+            resid = y - y.mean()
+            params = 1
+        sigma2 = max(float(np.mean(resid**2)), eps)
+        total_ll += -0.5 * n_samples * (np.log(2 * np.pi * sigma2) + 1)
+        total_params += params
+    return float(-2 * total_ll + total_params * np.log(n_samples))
+
+
+def subsample_rows(arr: np.ndarray, max_rows: int, seed: int) -> np.ndarray:
+    """Return `arr` unchanged if it has at most `max_rows` rows, else a
+    seeded uniform row subsample (RePaRe's `subsample_env`, used for GnIES)."""
+    if arr.shape[0] <= max_rows:
+        return arr
+    rng = np.random.default_rng(seed)
+    take = rng.choice(arr.shape[0], size=max_rows, replace=False)
+    return arr[take]
+
+
+def select_targets(
+    mode: str,
+    group_targets: dict[str, set[int]],
+    single_env_labels: list[str],
+    name_to_idx: dict[str, int],
+) -> dict[str, set[int]]:
+    """Intervention regime → `{env_label: target atom indices}`.
+
+    "grouped": the pooled rgb / pol blocks with their multi-target sets.
+    "ungrouped": one env per single-variable experiment, targeting itself.
+    """
+    if mode == "grouped":
+        return {label: set(t) for label, t in group_targets.items()}
+    if mode == "ungrouped":
+        return {label: {name_to_idx[label]} for label in single_env_labels}
+    raise ValueError(f"Unknown mode: {mode!r}")
+
+
+def baseline_env_lists(
+    mode: str,
+    blocks: dict,
+    group_targets: dict[str, set[int]],
+    single_env_labels: list[str],
+    name_to_idx: dict[str, int],
+) -> tuple[list[np.ndarray], list[list[int]], list[str]]:
+    """List-form input for the atomic baselines (GIES / GnIES / UT-IGSP).
+
+    Returns `(data_list, target_lists, env_labels)` with the observational
+    sample first and an empty target list for it — the layout `gies.fit_bic`,
+    `gnies.fit` and `ut_igsp.fit(obs_idx=0)` expect.
+    """
+    targets = select_targets(mode, group_targets, single_env_labels, name_to_idx)
+    env_labels = ["obs", *targets]
+    data_list = [blocks[label] for label in env_labels]
+    target_lists = [[], *(sorted(int(t) for t in targets[l]) for l in targets)]
+    return data_list, target_lists, env_labels
 
 
 def labeled_summary(
@@ -185,26 +369,48 @@ def partition_labels_from_dag(model_dag: nx.DiGraph, num_atoms: int) -> np.ndarr
     return labels
 
 
-def select_score_row(records: list[dict], score_lambda: float) -> dict:
-    """Data-driven pick over an α × λ grid: the max-BIC row **among rows at
-    ``score_lambda``**, tie-break on the smaller α.
-
-    BIC is ``2ℓ − λ·log(n)·d`` with ``d > 0``, so for a fixed model it is
-    strictly decreasing in λ; a max over the whole grid would always land on
-    the smallest λ regardless of the data. Ground truth never enters here.
-    """
-    rows = [r for r in records if np.isclose(r["lambda"], score_lambda)]
-    if not rows:
-        raise ValueError(
-            f"no grid row has lambda={score_lambda!r}; "
-            f"available: {sorted({r['lambda'] for r in records})}"
-        )
-    return max(rows, key=lambda r: (r["score"], -r["alpha"]))
-
-
 def select_oracle_row(records: list[dict]) -> dict:
     """Ground-truth pick over the whole grid: max ARI, then F1, then
     precision, then score (upper bound on what any selection could reach)."""
     return max(
         records, key=lambda r: (r["ari"], r["f1"], r["precision"], r["score"])
     )
+
+
+def select_utigsp_score_row(records: list[dict]) -> dict:
+    """UT-IGSP data-driven pick: min observational Gaussian BIC. Ties go to
+    the first cell in grid order (smaller `alpha_ci`, then `alpha_inv`) —
+    RePaRe's `df["bic"].idxmin()`. Ground truth never enters."""
+    return min(records, key=lambda r: (r["bic"], r["alpha_ci"], r["alpha_inv"]))
+
+
+def select_utigsp_oracle_row(records: list[dict]) -> dict:
+    """UT-IGSP ground-truth pick: max `f1 * precision`, ties to the first cell
+    in grid order — RePaRe's `(df["f1"] * df["precision"]).idxmax()`."""
+    return max(
+        records,
+        key=lambda r: (r["f1"] * r["precision"], -r["alpha_ci"], -r["alpha_inv"]),
+    )
+
+
+PAYLOAD_KEYS = (
+    "alpha", "second_hp", "second_hp_name", "metric_type", "ari",
+    "precision", "recall", "f1",
+    "dir_precision", "dir_recall", "dir_f1",
+    "skel_precision", "skel_recall", "skel_f1",
+    "score", "fit_time", "search_runtime_sec", "num_parts", "num_edges",
+)
+
+
+def params_payload(row: dict, parts, edges, **extra) -> dict:
+    """JSON payload for `score_params.json` / `oracle_params.json`.
+
+    Every method emits the same `PAYLOAD_KEYS` (missing ones are `None`) plus
+    the `labeled_summary` `parts` / `edges` and any method-specific `extra`
+    (e.g. `k`, `n_folds`, `estimated_targets`).
+    """
+    payload = {key: row.get(key) for key in PAYLOAD_KEYS}
+    payload.update(extra)
+    payload["parts"] = parts
+    payload["edges"] = edges
+    return payload

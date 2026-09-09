@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preprocess CausalChamber light-tunnel data for the COARSE/1PC/RePaRe
+"""Preprocess CausalChamber light-tunnel data for the COARSE / RePaRe / baselines
 experiment.
 
 The ground-truth partition labels are computed via

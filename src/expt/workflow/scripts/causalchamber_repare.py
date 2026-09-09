@@ -5,7 +5,7 @@ Lifted from `repare-0.2.0/src/expt/workflow/scripts/causalchamber_repare.py`.
 Two structural changes:
 
 1. RePaRe lives outside this Python package; we reach it via the same
-   `sys.path` trick as `fit_oracle_repare.py:26-27`.
+   `sys.path` trick as `fit_oracle_repare.py`.
 2. **No model pickles** — the partition + edges are serialized into
    `score_params.json` / `oracle_params.json`, and the DAGs are written as
    PNGs at fit time. The aggregator reconstructs everything from JSON, so it
@@ -15,7 +15,10 @@ Two structural changes:
 Score convention: RePaRe selects HPs by minimizing `score`, which is
 `-gnies.full_score(expanded_adj)` (the negation flips GnIES BIC into
 lower-is-better). NOT comparable across methods — cross-method comparison
-uses ARI / partition-edge precision / recall / F1.
+uses ARI / block-edge precision / recall / F1.
+
+Runtime convention (RePaRe's): `fit_time` is the selected cell's single fit;
+the grid total goes to `search_runtime_sec`.
 """
 
 import json
@@ -30,7 +33,7 @@ import pandas as pd
 from sklearn.metrics import adjusted_rand_score
 
 # RePaRe is a sibling subproject inside the thesis bundle, not part of the
-# COARSE Python package. parents[5] is the bundle root (…/THESIS/coarse/).
+# COARSE Python package. parents[5] is the bundle root (…/THESIS/).
 THESIS_BUNDLE = Path(__file__).resolve().parents[5]
 sys.path.insert(0, str(THESIS_BUNDLE / "repare-0.2.0" / "src"))
 
@@ -38,24 +41,15 @@ from gnies.scores.gnies_score import GnIESScore
 from repare.repare import PartitionDagModelIvn
 
 from _causalchamber_common import (
+    all_edge_metrics,
     build_data_dict,
     ground_truth_partition,
     labeled_summary,
-    partition_edge_metrics,
+    params_payload,
     partition_labels_from_dag,
     save_dag_plot,
+    select_targets,
 )
-
-
-def select_targets(mode, group_targets, single_env_labels, single_env_targets):
-    if mode == "grouped":
-        return {label: set(t) for label, t in group_targets.items()}
-    if mode == "ungrouped":
-        return {
-            label: {next(iter(single_env_targets[label]))}
-            for label in single_env_labels
-        }
-    raise ValueError(f"Unknown mode: {mode!r}")
 
 
 def main():
@@ -71,10 +65,10 @@ def main():
         true_labels = pickle.load(f)
     with open(snakemake.input.truedagfull, "rb") as f:
         true_dag_full = pickle.load(f)
+    with open(snakemake.input.nametoidx, "rb") as f:
+        name_to_idx = pickle.load(f)
     with open(snakemake.input.singleenvlabels, "rb") as f:
         single_env_labels = pickle.load(f)
-    with open(snakemake.input.singleenvtargets, "rb") as f:
-        single_env_targets = pickle.load(f)
     with open(snakemake.input.features, "r") as f:
         feature_cols = json.load(f)["feature_cols"]
 
@@ -82,7 +76,7 @@ def main():
     betas = [float(b) for b in snakemake.params.betas]
     mode = snakemake.params.mode
 
-    targets = select_targets(mode, group_targets, single_env_labels, single_env_targets)
+    targets = select_targets(mode, group_targets, single_env_labels, name_to_idx)
     if mode == "ungrouped":
         _, true_labels = ground_truth_partition(targets, partition_parts, true_dag_full)
 
@@ -108,7 +102,6 @@ def main():
 
         est_labels = partition_labels_from_dag(model.dag, num_atoms)
         ari = adjusted_rand_score(true_labels, est_labels)
-        edge_stats = partition_edge_metrics(model.dag, true_graph)
 
         expanded_adj = model.expand_coarsened_dag(fully_connected=True)
         score_value = -float(gnies_score.full_score(expanded_adj))
@@ -116,14 +109,20 @@ def main():
         records.append({
             "alpha": float(alpha),
             "beta": float(beta),
+            "second_hp": float(beta),
+            "second_hp_name": "beta",
             "ari": float(ari),
             "score": score_value,
             "fit_time": float(fit_time),
             "num_parts": int(model.dag.number_of_nodes()),
             "num_edges": int(model.dag.number_of_edges()),
-            **edge_stats,
+            **all_edge_metrics(model.dag, true_graph, native="partition"),
         })
         dags[(float(alpha), float(beta))] = model.dag
+
+    grid_runtime = float(sum(r["fit_time"] for r in records))
+    for r in records:
+        r["search_runtime_sec"] = grid_runtime
 
     df = pd.DataFrame(records)
     df.to_csv(snakemake.output.metrics_csv, index=False)
@@ -145,30 +144,14 @@ def main():
     score_parts, score_edges = labeled_summary(score_dag, feature_cols)
     oracle_parts, oracle_edges = labeled_summary(oracle_dag, feature_cols)
 
-    def _params_payload(row, parts, edges):
-        return {
-            "alpha": row["alpha"],
-            "beta": row["beta"],
-            "ari": row["ari"],
-            "score": row["score"],
-            "fit_time": row["fit_time"],
-            "num_parts": row["num_parts"],
-            "num_edges": row["num_edges"],
-            "precision": row["precision"],
-            "recall": row["recall"],
-            "f1": row["f1"],
-            "parts": parts,
-            "edges": edges,
-        }
-
     with open(snakemake.output.score_params, "w") as f:
         json.dump(
-            _params_payload(score_row, score_parts, score_edges),
+            params_payload(score_row, score_parts, score_edges, beta=score_row["beta"]),
             f, indent=2, default=float,
         )
     with open(snakemake.output.oracle_params, "w") as f:
         json.dump(
-            _params_payload(oracle_row, oracle_parts, oracle_edges),
+            params_payload(oracle_row, oracle_parts, oracle_edges, beta=oracle_row["beta"]),
             f, indent=2, default=float,
         )
 

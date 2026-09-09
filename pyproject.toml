@@ -51,6 +51,8 @@ test = [
 # Everything needed to reproduce the Snakemake experiments (`uv sync --group expt`).
 expt = [
     "causalchamber>=0.2.8",
+    "causaldag>=0.1a163",
+    "gies>=0.0.3",
     "gnies>=0.3.3",
     "matplotlib>=3.9",
     "pandas>=2.2",
