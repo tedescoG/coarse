@@ -29,9 +29,6 @@ dependencies = [
 Repository = "https://github.com/tedescoG/coarse"
 Issues = "https://github.com/tedescoG/coarse/issues"
 
-[tool.uv]
-cache-dir = "./.uv_cache"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

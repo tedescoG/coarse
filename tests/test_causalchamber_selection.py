@@ -199,3 +199,26 @@ def test_gaussian_bic_prefers_true_parent_on_linear_data():
     # Lower is better.
     assert gaussian_bic_score(data, true) < gaussian_bic_score(data, empty)
     assert gaussian_bic_score(data, nx.DiGraph()) == float("inf")
+
+
+from _common import block_dag_prf, partition_labels  # noqa: E402
+from _causalchamber_common import build_block_data_dict  # noqa: E402
+
+
+def test_partition_edge_metrics_delegates_to_block_dag_prf():
+    est = nx.DiGraph()
+    est.add_nodes_from([(0,), (1,), (2, 3)])
+    est.add_edge((0,), (1,))
+    est.add_edge((2, 3), (1,))
+    truth = _true_chain()
+    precision, recall, f1 = block_dag_prf(est, truth)
+    assert partition_edge_metrics(est, truth) == {
+        "precision": precision, "recall": recall, "f1": f1,
+    }
+
+
+def test_build_block_data_dict_keys_and_types():
+    blocks = {"obs": np.zeros((3, 2)), "rgb": np.ones((3, 2))}
+    out = build_block_data_dict(blocks, {"rgb": {0, 1}})
+    assert out["obs"] == (blocks["obs"], set(), "obs")
+    assert out["rgb"][1] == {0, 1} and out["rgb"][2] == "soft"

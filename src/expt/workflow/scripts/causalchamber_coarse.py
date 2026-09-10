@@ -33,13 +33,13 @@ from sklearn.metrics import adjusted_rand_score
 
 from coarse import COARSE
 from coarse.cv import COARSECV
+from _common import partition_labels
 from _causalchamber_common import (
     all_edge_metrics,
-    build_data_dict,
+    build_block_data_dict,
     ground_truth_partition,
     labeled_summary,
     params_payload,
-    partition_labels_from_dag,
     save_dag_plot,
     select_oracle_row,
     select_targets,
@@ -47,7 +47,7 @@ from _causalchamber_common import (
 
 
 def _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph, num_atoms):
-    est_labels = partition_labels_from_dag(model.dag, num_atoms)
+    est_labels = partition_labels(model.dag.nodes, num_atoms)
     return {
         "alpha": float(alpha),
         "lambda": float(lambda_pen),
@@ -87,7 +87,7 @@ def main():
     mode = snakemake.params.mode
 
     targets = select_targets(mode, group_targets, single_env_labels, name_to_idx)
-    data_dict = build_data_dict(blocks, targets)
+    data_dict = build_block_data_dict(blocks, targets)
     num_atoms = len(partition_parts)
 
     # `true_labels` was computed under the GROUPED ground-truth partition.

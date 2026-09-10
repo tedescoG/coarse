@@ -27,8 +27,10 @@ import numpy as np
 
 from coarse.partition import infer_partition
 
+from _common import block_dag_prf, partition_labels
 
-def build_data_dict(blocks: dict, targets: dict[str, set[int]]) -> dict:
+
+def build_block_data_dict(blocks: dict, targets: dict[str, set[int]]) -> dict:
     """Construct the (X, targets, type) input dict shared by COARSE and RePaRe.
 
     Both methods accept `{"obs": (X, set(), "obs"), env_key: (X, targets, "soft")}`.
@@ -40,22 +42,13 @@ def build_data_dict(blocks: dict, targets: dict[str, set[int]]) -> dict:
 
 
 def partition_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph) -> dict:
-    """Precision/recall/F1 of `model_dag`'s edges against the ground-truth
-    partition graph, computed by collapsing `true_graph`'s atomic edges to the
-    coarsened nodes of `model_dag`: a coarsened edge (pa → ch) is counted as
-    true iff some atomic edge (u → v) with u ∈ pa, v ∈ ch exists in `true_graph`.
+    """Precision/recall/F1 of `model_dag`'s edges against the ground-truth partition graph:
+    `true_graph`'s atomic edges collapsed onto `model_dag`'s blocks over forward node pairs.
+    Delegates to `_common.block_dag_prf` so the synthetic and chamber halves share one
+    definition of the metric.
     """
-    true_edge_partition = nx.create_empty_copy(model_dag)
-    node_list = list(true_edge_partition.nodes)
-    for i, pa in enumerate(node_list[:-1]):
-        for ch in node_list[i + 1 :]:
-            if any(true_graph.has_edge(u, v) for u in pa for v in ch):
-                true_edge_partition.add_edge(pa, ch)
-    tp = sum(1 for edge in model_dag.edges if edge in true_edge_partition.edges)
-    precision = tp / len(model_dag.edges) if model_dag.edges else 1.0
-    recall = tp / len(true_edge_partition.edges) if true_edge_partition.edges else 1.0
-    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-    return {"precision": precision, "recall": recall, "f1": f1}
+    precision, recall, f1 = block_dag_prf(model_dag, true_graph)
+    return {"precision": float(precision), "recall": float(recall), "f1": float(f1)}
 
 
 def _prf(tp: int, n_est: int, n_true: int) -> dict:
@@ -350,23 +343,8 @@ def ground_truth_partition(target_dict, parts, true_dag_full: nx.DiGraph):
         return [], np.zeros(len(parts), dtype=int)
     M_true = np.column_stack(masks).astype(bool)
     partition = infer_partition(M_true)
-    labels = np.zeros(len(parts), dtype=int)
-    for label_idx, block in enumerate(partition):
-        labels[list(block)] = label_idx
+    labels = partition_labels(partition, len(parts))
     return partition, labels
-
-
-def partition_labels_from_dag(model_dag: nx.DiGraph, num_atoms: int) -> np.ndarray:
-    """Project a partition DAG onto a length-`num_atoms` label vector.
-
-    Each atom (column index in the kept-feature list) gets the integer index of
-    its enclosing partition block, matching the convention used to compute ARI
-    against the ground-truth labels.
-    """
-    labels = np.zeros(num_atoms, dtype=int)
-    for block_idx, block in enumerate(model_dag.nodes):
-        labels[list(block)] = block_idx
-    return labels
 
 
 def select_oracle_row(records: list[dict]) -> dict:

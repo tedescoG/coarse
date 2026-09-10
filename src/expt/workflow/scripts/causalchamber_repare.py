@@ -40,13 +40,13 @@ sys.path.insert(0, str(THESIS_BUNDLE / "repare-0.2.0" / "src"))
 from gnies.scores.gnies_score import GnIESScore
 from repare.repare import PartitionDagModelIvn
 
+from _common import partition_labels
 from _causalchamber_common import (
     all_edge_metrics,
-    build_data_dict,
+    build_block_data_dict,
     ground_truth_partition,
     labeled_summary,
     params_payload,
-    partition_labels_from_dag,
     save_dag_plot,
     select_targets,
 )
@@ -92,7 +92,7 @@ def main():
     for alpha, beta in product(alphas, betas):
         start = time.perf_counter()
         model = PartitionDagModelIvn().fit(
-            build_data_dict(blocks, targets),
+            build_block_data_dict(blocks, targets),
             alpha=float(alpha),
             beta=float(beta),
             assume="gaussian",
@@ -100,7 +100,7 @@ def main():
         )
         fit_time = time.perf_counter() - start
 
-        est_labels = partition_labels_from_dag(model.dag, num_atoms)
+        est_labels = partition_labels(model.dag.nodes, num_atoms)
         ari = adjusted_rand_score(true_labels, est_labels)
 
         expanded_adj = model.expand_coarsened_dag(fully_connected=True)
