@@ -12,7 +12,6 @@ by column name, so every rule file gets identical styling for free.
 Every panel draws the median across seeds with a bootstrap CI band.
 """
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
@@ -39,13 +38,16 @@ def _subset(panel: dict) -> pd.DataFrame:
         order = ps.method_order(sub[hue].unique())
     else:
         order = sorted(sub[hue].unique())
-    sub[hue] = pd.Categorical(sub[hue], categories=order, ordered=True)
-    if sub[hue].isna().any():
+    outside = set(sub[hue].unique()) - set(order)
+    if outside:
         raise ValueError(f"panel {panel['out']!r}: hue values outside hue_order={order}")
+    sub[hue] = pd.Categorical(sub[hue], categories=order, ordered=True)
     return sub
 
 
 def _style(ax, panel: dict, sub: pd.DataFrame, *, xlabel: bool, ylabel: bool) -> None:
+    """Facet-branch styling only; the single-panel branch gets the same policy from
+    _plot_style.line_panel."""
     x, y = panel["x"], panel["y"]
     if x in ("samp_size", "num_nodes"):
         ax.set_xscale("log")
@@ -66,7 +68,11 @@ for panel in snakemake.params.panels:
     sub = _subset(panel)
     hue = panel["hue"]
     levels = list(sub[hue].cat.categories)
-    line_kwargs = dict(
+    out_path = snakemake.output[panel["out"]]
+    if panel.get("col") is None:
+        ps.line_panel(sub, x=panel["x"], y=panel["y"], hue=hue, out_path=out_path, hue_order=levels)
+        continue
+    g = sns.relplot(
         data=sub,
         x=panel["x"],
         y=panel["y"],
@@ -81,22 +87,13 @@ for panel in snakemake.params.panels:
         errorbar="ci",
         linewidth=2.0,
         markersize=8,
+        kind="line", col=panel["col"], height=4.8, aspect=1.33,
+        facet_kws={"sharey": True, "sharex": True},
     )
-    if panel.get("col") is None:
-        fig, ax = plt.subplots(figsize=(6.4, 4.8))
-        sns.lineplot(ax=ax, **line_kwargs)
-        _style(ax, panel, sub, xlabel=True, ylabel=True)
-        ps.place_legend(ax, ps.label(hue))
-    else:
-        g = sns.relplot(
-            kind="line", col=panel["col"], height=4.8, aspect=1.33,
-            facet_kws={"sharey": True, "sharex": True}, **line_kwargs,
-        )
-        axes = g.axes
-        for i in range(axes.shape[0]):
-            for j in range(axes.shape[1]):
-                _style(axes[i, j], panel, sub, xlabel=(i == axes.shape[0] - 1), ylabel=(j == 0))
-        g.set_titles(ps.label(panel["col"]) + " = {col_name}")
-        ps.place_legend(g, ps.label(hue))
-        fig = g.figure
-    ps.finish(fig, snakemake.output[panel["out"]])
+    axes = g.axes
+    for i in range(axes.shape[0]):
+        for j in range(axes.shape[1]):
+            _style(axes[i, j], panel, sub, xlabel=(i == axes.shape[0] - 1), ylabel=(j == 0))
+    g.set_titles(ps.label(panel["col"]) + " = {col_name}")
+    ps.place_legend(g, ps.label(hue))
+    ps.finish(g.figure, out_path)

@@ -178,3 +178,47 @@ def finish(fig, path) -> None:
     caller never ran apply_style()."""
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
+
+
+def line_panel(sub, *, x, y, hue, out_path, hue_order=None) -> None:
+    """One 6.4×4.8 in line panel: median over seeds with CI band, styled by column name
+    (scales, tick policy, [0,1] limits, labels, palette, markers, outside legend), saved to
+    out_path. Every single-panel figure in the suite goes through here, so the panels are
+    identical by construction rather than by three copies of the same block."""
+    levels = sub[hue].unique()
+    if hue_order is not None:
+        order = list(hue_order)
+    elif hue == "method":
+        order = method_order(levels)
+    else:
+        order = sorted(levels)
+    # Checked before the cast, not after: pandas 4 will raise on values outside `categories`
+    # instead of silently turning them into NaN, so the membership test must come first.
+    outside = set(levels) - set(order)
+    if outside:
+        raise ValueError(f"{hue} values outside hue_order={order}: {sorted(outside)}")
+    sub = sub.copy()
+    sub[hue] = pd.Categorical(sub[hue], categories=order, ordered=True)
+
+    fig, ax = plt.subplots(figsize=(6.4, 4.8))
+    sns.lineplot(
+        data=sub, x=x, y=y, hue=hue, style=hue,
+        hue_order=order, style_order=order,
+        palette=hue_palette(hue, order), markers=hue_markers(hue, order),
+        dashes=True, estimator="median", errorbar="ci", linewidth=2.0, markersize=8, ax=ax,
+    )
+    if x in ("samp_size", "num_nodes"):
+        ax.set_xscale("log")
+        format_axis(ax.xaxis, x, values=sorted(sub[x].unique()))
+    elif x == "lambda_pen":
+        ax.set_xscale("log", base=2)
+        format_axis(ax.xaxis, x)
+    if y in LOG_Y:
+        ax.set_yscale("log")
+        format_axis(ax.yaxis, y)
+    if y in UNIT_RANGE:
+        ax.set_ylim(0, 1)
+    ax.set_xlabel(label(x))
+    ax.set_ylabel(label(y))
+    place_legend(ax, label(hue))
+    finish(fig, out_path)

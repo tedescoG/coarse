@@ -80,6 +80,28 @@ def test_lambda_axis_labels_powers_of_two():
     plt.close(fig)
 
 
+def test_line_panel_writes_a_file_and_rejects_hues_outside_the_order(tmp_path):
+    """A non-empty PDF is written, and a hue_order missing a present level raises."""
+    df = ps.display_methods(
+        pd.DataFrame(
+            {
+                "method": ["COARSE-oracle", "RePaRe-oracle"] * 4,
+                "samp_size": [500, 500, 1000, 1000] * 2,
+                "seed": [0, 0, 0, 0, 1, 1, 1, 1],
+                "fscore": [0.7, 0.5, 0.8, 0.6, 0.72, 0.52, 0.82, 0.62],
+            }
+        )
+    )
+    out = tmp_path / "p.pdf"
+    ps.line_panel(df, x="samp_size", y="fscore", hue="method", out_path=out)
+    assert out.exists() and out.stat().st_size > 0
+    with pytest.raises(ValueError):
+        ps.line_panel(
+            df, x="samp_size", y="fscore", hue="method",
+            out_path=tmp_path / "q.pdf", hue_order=["COARSE"],
+        )
+
+
 def test_runtime_y_axis_shows_decades_only_and_keeps_margin():
     fig, ax = plt.subplots()
     ax.plot([1, 2], [200, 300])

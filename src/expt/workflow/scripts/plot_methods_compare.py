@@ -12,9 +12,7 @@ than wiring.
 import re
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
 
 import _plot_style as ps
 
@@ -47,24 +45,4 @@ for out_path in snakemake.output:
         & (df["num_nodes"] == keys["p"])
         & (df["density"] == keys["d"])
     ]
-    metric = keys["metric"]
-
-    order = ps.method_order(sub["method"].unique())
-    fig, ax = plt.subplots(figsize=(6.4, 4.8))
-    sns.lineplot(
-        data=sub, x="samp_size", y=metric, hue="method", style="method",
-        hue_order=order, style_order=order,
-        palette=ps.hue_palette("method", order), markers=ps.hue_markers("method", order),
-        dashes=True, estimator="median", errorbar="ci", linewidth=2.0, markersize=8, ax=ax,
-    )
-    ax.set_xscale("log")
-    ps.format_axis(ax.xaxis, "samp_size")
-    if metric in ps.LOG_Y:
-        ax.set_yscale("log")
-        ps.format_axis(ax.yaxis, metric)
-    if metric in ps.UNIT_RANGE:
-        ax.set_ylim(0, 1)
-    ax.set_xlabel(ps.label("samp_size"))
-    ax.set_ylabel(ps.label(metric))
-    ps.place_legend(ax, ps.label("method"))
-    ps.finish(fig, out_path)
+    ps.line_panel(sub, x="samp_size", y=keys["metric"], hue="method", out_path=out_path)
