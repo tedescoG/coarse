@@ -88,7 +88,7 @@ for panel in snakemake.params.panels:
         linewidth=2.0,
         markersize=8,
         kind="line", col=panel["col"], height=4.8, aspect=1.33,
-        facet_kws={"sharey": True, "sharex": True},
+        facet_kws={"sharey": True, "sharex": True, "legend_out": False},
     )
     axes = g.axes
     for i in range(axes.shape[0]):
