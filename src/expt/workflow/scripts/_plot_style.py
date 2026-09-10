@@ -51,7 +51,7 @@ METHOD_MARKER = dict(zip(METHOD_ORDER, ["o", "D", "s", "^", "v"]))
 # --- columns ---------------------------------------------------------------------------
 COLUMN_LABEL = {
     "samp_size": "sample size (n)",
-    "num_nodes": "p",
+    "num_nodes": "nodes",
     "density": "density",
     "noise": "noise",
     "method": "method",
@@ -79,7 +79,6 @@ def apply_style() -> None:
     sns.set_theme(style="ticks", context="paper", font_scale=2.3, palette=CATEGORICAL)
     plt.rcParams.update(
         {
-            "legend.frameon": False,
             "savefig.bbox": "tight",
             "savefig.pad_inches": 0.03,
         }

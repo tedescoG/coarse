@@ -42,8 +42,15 @@ def test_metric_labels_use_short_names_with_arrows():
     assert not any("Adjusted" in v for v in ps.COLUMN_LABEL.values())
 
 
-def test_node_count_column_is_labelled_p():
-    assert ps.COLUMN_LABEL["num_nodes"] == "p"
+def test_node_count_column_is_labelled_nodes():
+    assert ps.COLUMN_LABEL["num_nodes"] == "nodes"
+
+
+def test_apply_style_leaves_the_default_font():
+    """After apply_style() the font family is matplotlib's default and mathtext is not cm."""
+    ps.apply_style()
+    assert matplotlib.rcParams["font.family"] == ["sans-serif"]
+    assert matplotlib.rcParams["mathtext.fontset"] != "cm"
 
 
 def test_place_legend_puts_a_single_panel_legend_inside_the_axes():
