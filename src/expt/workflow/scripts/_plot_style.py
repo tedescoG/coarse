@@ -90,8 +90,6 @@ def apply_style() -> None:
 
 def ordinal_palette(n: int) -> list:
     """`n` colours sampled from the teal → gold → KU red ramp (ordered hue levels)."""
-    if n == 1:
-        return [TEAL]
     return list(sns.blend_palette([TEAL, GOLD, KU_RED], n_colors=n))
 
 
@@ -149,18 +147,26 @@ def format_axis(axis, column: str, values=None) -> None:
         lo_dec, hi_dec = math.floor(math.log10(lo)), math.ceil(math.log10(hi))
         if hi_dec - lo_dec < 1:
             hi_dec = lo_dec + 1
-        # Widen only outward: data never leaves the view.
+        # Widen only outward, and against the *view* interval, not the data: a grid whose
+        # endpoint is a power of ten (n=1000) would otherwise lose its autoscale margin and
+        # leave the last marker half-clipped on the spine.
+        vlo, vhi = axis.get_view_interval()
         set_lim = axis.axes.set_xlim if axis.axis_name == "x" else axis.axes.set_ylim
-        set_lim(min(lo, 10.0**lo_dec), max(hi, 10.0**hi_dec))
+        set_lim(min(vlo, 10.0**lo_dec), max(vhi, 10.0**hi_dec))
     axis.set_major_locator(LogLocator(base=base, subs=(1.0,), numticks=20))
     axis.set_major_formatter(LogFormatterSciNotation(base=base, labelOnlyBase=True))
-    axis.set_minor_locator(LogLocator(base=base, subs=np.arange(2, base) if base == 10 else (1.0,), numticks=20))
+    if base == 10:
+        axis.set_minor_locator(LogLocator(base=base, subs=np.arange(2, base), numticks=20))
+    else:
+        axis.set_minor_locator(NullLocator())
     axis.set_minor_formatter(NullFormatter())
 
 
 def place_legend(target, title: str | None) -> None:
     """Legend outside the axes on the right: never covers data, never collides with a
-    label. `target` is an Axes (single panel) or a seaborn FacetGrid."""
+    label. `target` is an Axes (single panel) or a seaborn FacetGrid. The Axes branch
+    rebuilds the legend from the axes' labelled artists, discarding any legend already
+    built with custom handles."""
     if isinstance(target, sns.axisgrid.Grid):
         sns.move_legend(target, "center left", bbox_to_anchor=(1.0, 0.5), title=title, frameon=False)
     else:
@@ -168,5 +174,7 @@ def place_legend(target, title: str | None) -> None:
 
 
 def finish(fig, path) -> None:
-    fig.savefig(path)
+    """Save and close. bbox is explicit so a legend outside the axes survives even if the
+    caller never ran apply_style()."""
+    fig.savefig(path, bbox_inches="tight")
     plt.close(fig)

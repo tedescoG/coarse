@@ -78,3 +78,13 @@ def test_lambda_axis_labels_powers_of_two():
     ps.format_axis(ax.xaxis, "lambda_pen")
     assert _visible_labels(ax.xaxis)[0] == "$\\mathdefault{2^{-3}}$"
     plt.close(fig)
+
+
+def test_runtime_y_axis_shows_decades_only_and_keeps_margin():
+    fig, ax = plt.subplots()
+    ax.plot([1, 2], [200, 300])
+    ax.set_yscale("log")
+    ps.format_axis(ax.yaxis, "runtime_sec")
+    assert _visible_labels(ax.yaxis) == ["$\\mathdefault{10^{2}}$", "$\\mathdefault{10^{3}}$"]
+    assert ax.get_ylim()[1] > 300
+    plt.close(fig)
