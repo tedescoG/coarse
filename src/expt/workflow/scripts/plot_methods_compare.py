@@ -1,6 +1,6 @@
 """One PDF per (graph, num_nodes, density, metric). Each panel shows 3
-method-lines (COARSE-oracle / kPC-k1-oracle / RePaRe-oracle, mapped to display
-names COARSE / COARSE-1PC / RePaRe) on a common samp_size x-axis.
+method-lines (COARSE-oracle / kPC-k1-oracle / RePaRe-oracle) on a common
+samp_size x-axis; display names come from `_plot_style.METHOD_DISPLAY`.
 
 Output filenames follow the template
   results/methods_compare/{graph}_p={p}_dens={d}_{metric}.pdf
@@ -16,25 +16,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-sns.set_palette("colorblind")
-# Match the COARSE experiment suite (plot.py): one uniform font size for axis
-# labels, tick labels, title AND legend.
-sns.set_context("paper", font_scale=2.3)
+import _plot_style as ps
 
-# evaluate.py labels every oracle run "<method>-oracle"; the legend carries the thesis names.
-DISPLAY = {"COARSE-oracle": "COARSE", "kPC-k1-oracle": "COARSE-1PC", "RePaRe-oracle": "RePaRe"}
-METHOD_ORDER = list(DISPLAY.values())
-PALETTE = {"COARSE": "C0", "COARSE-1PC": "C1", "RePaRe": "C2"}
-MARKERS = {"COARSE": "o", "COARSE-1PC": "s", "RePaRe": "^"}
-
-METRIC_LABEL = {
-    "fscore": "F-score ↑",
-    "precision": "precision ↑",
-    "recall": "recall ↑",
-    "runtime_sec": "run time (s)",
-}
-LOG_Y_METRICS = {"runtime_sec"}
-UNIT_RANGE_METRICS = {"fscore", "precision", "recall"}
+ps.apply_style()
 
 PATH_RE = re.compile(
     r"^(?P<graph>er|sf)_p=(?P<p>\d+)_dens=(?P<d>[\d.]+)_(?P<metric>[a-z_]+)\.pdf$"
@@ -54,8 +38,7 @@ def parse_output_path(path: str) -> dict:
     }
 
 
-df = pd.read_csv(snakemake.input[0])
-df = df[df["method"].isin(DISPLAY)].assign(method=lambda d: d["method"].map(DISPLAY))
+df = ps.display_methods(pd.read_csv(snakemake.input[0]))
 
 for out_path in snakemake.output:
     keys = parse_output_path(out_path)
@@ -63,40 +46,25 @@ for out_path in snakemake.output:
         (df["graph_family"] == keys["graph"])
         & (df["num_nodes"] == keys["p"])
         & (df["density"] == keys["d"])
-        & (df["method"].isin(METHOD_ORDER))
     ]
     metric = keys["metric"]
 
-    fig, ax = plt.subplots(figsize=(6.0, 4.5))
+    order = ps.method_order(sub["method"].unique())
+    fig, ax = plt.subplots(figsize=(6.4, 4.8))
     sns.lineplot(
-        data=sub,
-        x="samp_size",
-        y=metric,
-        hue="method",
-        style="method",
-        hue_order=METHOD_ORDER,
-        style_order=METHOD_ORDER,
-        palette=PALETTE,
-        markers=MARKERS,
-        dashes=False,
-        estimator="median",
-        errorbar="ci",
-        linewidth=2.0,
-        markersize=8,
-        ax=ax,
+        data=sub, x="samp_size", y=metric, hue="method", style="method",
+        hue_order=order, style_order=order,
+        palette=ps.hue_palette("method", order), markers=ps.hue_markers("method", order),
+        dashes=True, estimator="median", errorbar="ci", linewidth=2.0, markersize=8, ax=ax,
     )
     ax.set_xscale("log")
-    if metric in LOG_Y_METRICS:
+    ps.format_axis(ax.xaxis, "samp_size")
+    if metric in ps.LOG_Y:
         ax.set_yscale("log")
-    if metric in UNIT_RANGE_METRICS:
+        ps.format_axis(ax.yaxis, metric)
+    if metric in ps.UNIT_RANGE:
         ax.set_ylim(0, 1)
-    ax.set_xlabel("sample size (n)")
-    ax.set_ylabel(METRIC_LABEL.get(metric, metric))
-    # no per-panel title: the graph/p/density are stated in the figure caption.
-    # loc="best" picks the emptiest corner; a semi-transparent white box means
-    # any curve passing under the legend still shows through.
-    ax.legend(title=None, loc="best", frameon=True, framealpha=0.6,
-              facecolor="white")
-    fig.tight_layout()
-    fig.savefig(out_path, bbox_inches="tight", pad_inches=0.05)
-    plt.close(fig)
+    ax.set_xlabel(ps.label("samp_size"))
+    ax.set_ylabel(ps.label(metric))
+    ps.place_legend(ax, ps.label("method"))
+    ps.finish(fig, out_path)

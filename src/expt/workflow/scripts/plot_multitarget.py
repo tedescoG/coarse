@@ -27,39 +27,20 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-sns.set_palette("colorblind")
-sns.set_context("paper", font_scale=1.5)
+import _plot_style as ps
 
-METHOD_ORDER = ["COARSE", "COARSE-CV", "COARSE-1PC"]
-PALETTE = {"COARSE": "C0", "COARSE-CV": "C1", "COARSE-1PC": "C2"}
-MARKERS = {"COARSE": "o", "COARSE-CV": "D", "COARSE-1PC": "s"}
+ps.apply_style()
 
-# Ordered categorical for the summary plot — "1to5" goes last so the reader
-# sees fixed sizes 2, 3, 5 progress monotonically, then the heterogeneous
-# regime as the right-most contrast.
+# Ordered categorical for the summary plot — "1to5" goes last so the reader sees fixed
+# sizes 2, 3, 5 progress monotonically, then the heterogeneous regime as the contrast.
 TPI_ORDER = ["2", "3", "5", "1to5"]
 TPI_LABEL = {"2": "2", "3": "3", "5": "5", "1to5": "1–5 (mix)"}
-
-METRIC_LABEL = {
-    "fscore": "F-score ↑",
-    "ari": "Adjusted Rand Index ↑",
-    "precision": "precision ↑",
-    "recall": "recall ↑",
-    "runtime_sec": "run time (s)",
-}
-LOG_Y_METRICS = {"runtime_sec"}
-UNIT_RANGE_METRICS = {"fscore", "ari", "precision", "recall"}
 
 LINE_RE = re.compile(
     r"^(?P<graph>er|sf)_p=(?P<p>\d+)_dens=(?P<d>[\d.]+)"
     r"_tpi=(?P<tpi>\d+(?:to\d+)?)_(?P<metric>[a-z_]+)\.pdf$"
 )
 SUMMARY_RE = re.compile(r"^summary_(?P<metric>[a-z_]+)\.pdf$")
-
-
-def _save(fig, out_path):
-    fig.savefig(out_path, bbox_inches="tight", pad_inches=0.05)
-    plt.close(fig)
 
 
 def _render_line(df: pd.DataFrame, out_path: str) -> None:
@@ -70,42 +51,28 @@ def _render_line(df: pd.DataFrame, out_path: str) -> None:
         & (df["num_nodes"] == int(keys["p"]))
         & (df["density"] == float(keys["d"]))
         & (df["targets_per_interv"] == keys["tpi"])
-        & (df["method"].isin(METHOD_ORDER))
     ]
     metric = keys["metric"]
 
-    fig, ax = plt.subplots(figsize=(6.0, 4.5))
+    order = ps.method_order(sub["method"].unique())
+    fig, ax = plt.subplots(figsize=(6.4, 4.8))
     sns.lineplot(
-        data=sub,
-        x="samp_size",
-        y=metric,
-        hue="method",
-        style="method",
-        hue_order=METHOD_ORDER,
-        style_order=METHOD_ORDER,
-        palette=PALETTE,
-        markers=MARKERS,
-        dashes=False,
-        estimator="median",
-        errorbar="ci",
-        linewidth=2.0,
-        markersize=8,
-        ax=ax,
+        data=sub, x="samp_size", y=metric, hue="method", style="method",
+        hue_order=order, style_order=order,
+        palette=ps.hue_palette("method", order), markers=ps.hue_markers("method", order),
+        dashes=True, estimator="median", errorbar="ci", linewidth=2.0, markersize=8, ax=ax,
     )
     ax.set_xscale("log")
-    if metric in LOG_Y_METRICS:
+    ps.format_axis(ax.xaxis, "samp_size")
+    if metric in ps.LOG_Y:
         ax.set_yscale("log")
-    if metric in UNIT_RANGE_METRICS:
+        ps.format_axis(ax.yaxis, metric)
+    if metric in ps.UNIT_RANGE:
         ax.set_ylim(0, 1)
-    ax.set_xlabel("sample size (n)")
-    ax.set_ylabel(METRIC_LABEL.get(metric, metric))
-    ax.set_title(
-        f"{keys['graph']}  p={keys['p']}  density={keys['d']}  "
-        f"targets/intervention = {TPI_LABEL[keys['tpi']]}"
-    )
-    ax.legend(title=None, loc="best", frameon=False)
-    fig.tight_layout()
-    _save(fig, out_path)
+    ax.set_xlabel(ps.label("samp_size"))
+    ax.set_ylabel(ps.label(metric))
+    ps.place_legend(ax, ps.label("method"))
+    ps.finish(fig, out_path)
 
 
 def _render_summary(df: pd.DataFrame, out_path: str) -> None:
@@ -118,18 +85,19 @@ def _render_summary(df: pd.DataFrame, out_path: str) -> None:
     rather than 'how does each individual sample size behave?' (which the
     line plots already cover)."""
     metric = SUMMARY_RE.match(Path(out_path).name).group("metric")
-    sub = df[df["method"].isin(METHOD_ORDER)].copy()
+    sub = df.copy()
     sub["tpi_label"] = sub["targets_per_interv"].map(TPI_LABEL)
 
+    order = ps.method_order(sub["method"].unique())
     g = sns.catplot(
         data=sub,
         x="tpi_label",
         order=[TPI_LABEL[t] for t in TPI_ORDER],
         y=metric,
         hue="method",
-        hue_order=METHOD_ORDER,
-        palette=PALETTE,
-        markers=[MARKERS[m] for m in METHOD_ORDER],
+        hue_order=order,
+        palette=ps.hue_palette("method", order),
+        markers=[ps.METHOD_MARKER[m] for m in order],
         kind="point",
         estimator="median",
         errorbar="ci",
@@ -139,28 +107,26 @@ def _render_summary(df: pd.DataFrame, out_path: str) -> None:
         row="density",
         sharex=True,
         sharey=True,
-        height=3.0,
+        height=4.0,
         aspect=1.2,
         legend_out=True,
     )
-    g.set_axis_labels("targets per intervention", METRIC_LABEL.get(metric, metric))
+    g.set_axis_labels(ps.label("targets_per_interv"), ps.label(metric))
     g.set_titles(col_template="p = {col_name}", row_template="density = {row_name}")
-    if metric in UNIT_RANGE_METRICS:
+    if metric in ps.UNIT_RANGE:
         for ax in g.axes.flat:
             ax.set_ylim(0, 1)
-    if metric in LOG_Y_METRICS:
+    if metric in ps.LOG_Y:
         for ax in g.axes.flat:
             ax.set_yscale("log")
-    g.fig.suptitle(
-        f"Multi-target intervention recovery — {METRIC_LABEL.get(metric, metric)}",
-        y=1.02,
-    )
-    _save(g.fig, out_path)
+    ps.place_legend(g, ps.label("method"))
+    ps.finish(g.figure, out_path)
 
 
 # `targets_per_interv` is a string column ("2", "1to5"); without the dtype a numeric-only
 # CSV would parse it as int and the string equality filter below would match nothing.
 df = pd.read_csv(snakemake.input[0], dtype={"targets_per_interv": str})
+df = ps.display_methods(df)
 
 for out_path in snakemake.output:
     name = Path(out_path).name
