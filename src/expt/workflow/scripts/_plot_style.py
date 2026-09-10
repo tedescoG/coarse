@@ -51,7 +51,7 @@ METHOD_MARKER = dict(zip(METHOD_ORDER, ["o", "D", "s", "^", "v"]))
 # --- columns ---------------------------------------------------------------------------
 COLUMN_LABEL = {
     "samp_size": "sample size (n)",
-    "num_nodes": "number of nodes (d)",
+    "num_nodes": "p",
     "density": "density",
     "noise": "noise",
     "method": "method",
@@ -161,26 +161,27 @@ def format_axis(axis, column: str, values=None) -> None:
 
 
 def place_legend(target, title: str | None) -> None:
-    """Legend outside the axes on the right: never covers data, never collides with a
-    label. `target` is an Axes (single panel) or a seaborn FacetGrid. The Axes branch
+    """Single panel (an Axes): inside the axes, in whichever corner is emptiest. Grid (a
+    seaborn FacetGrid): in the right margin, where no panel can be covered. The Axes branch
     rebuilds the legend from the axes' labelled artists, discarding any legend already
     built with custom handles."""
     if isinstance(target, sns.axisgrid.Grid):
         sns.move_legend(target, "center left", bbox_to_anchor=(1.0, 0.5), title=title, frameon=False)
     else:
-        target.legend(title=title, loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
+        # loc="best" picks the emptiest corner; the translucent box keeps curves visible.
+        target.legend(title=title, loc="best", frameon=True, framealpha=0.6, facecolor="white")
 
 
 def finish(fig, path) -> None:
-    """Save and close. bbox is explicit so a legend outside the axes survives even if the
-    caller never ran apply_style()."""
+    """Save and close. bbox is explicit so a legend in a grid's right margin survives even
+    if the caller never ran apply_style()."""
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
 
 
 def line_panel(sub, *, x, y, hue, out_path, hue_order=None) -> None:
     """One 6.4×4.8 in line panel: median over seeds with CI band, styled by column name
-    (scales, tick policy, [0,1] limits, labels, palette, markers, outside legend), saved to
+    (scales, tick policy, [0,1] limits, labels, palette, markers, inset legend), saved to
     out_path. Every single-panel figure in the suite goes through here, so the panels are
     identical by construction rather than by three copies of the same block."""
     levels = sub[hue].unique()
