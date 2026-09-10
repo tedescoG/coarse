@@ -73,14 +73,12 @@ def label(column: str) -> str:
 
 
 def apply_style() -> None:
-    """Seaborn paper context at the suite's font scale, serif text with Computer Modern
-    mathtext so 10^k / 2^k ticks match a LaTeX body. No usetex: must render without TeX."""
+    """Seaborn paper context at the suite's font scale, leaving matplotlib's default
+    sans-serif text and default mathtext for the 10^k / 2^k ticks. No usetex: must render
+    without TeX."""
     sns.set_theme(style="ticks", context="paper", font_scale=2.3, palette=CATEGORICAL)
     plt.rcParams.update(
         {
-            "font.family": "serif",
-            "mathtext.fontset": "cm",
-            "axes.unicode_minus": False,
             "legend.frameon": False,
             "savefig.bbox": "tight",
             "savefig.pad_inches": 0.03,
