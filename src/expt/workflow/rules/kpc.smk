@@ -6,10 +6,6 @@
 EXP2_NODES = [30]
 EXP3_NODES = [10, 20] if SMOKE else [10, 20, 50, 100, 200]
 EXP3_STEMS = ["fscore_vs_n", "runtime_vs_n", "runtime_vs_d"]
-# plot_panels.py maps method labels through _plot_style.METHOD_DISPLAY before filtering, so
-# the exp3 per-method filter must name the *display* method. Rule files cannot import
-# scripts, so this mirrors the coarse/kpc1/kpc3 rows of _plot_style.METHOD_DISPLAY by hand.
-ps_display = {"coarse": "COARSE", "kpc1": "COARSE-1PC", "kpc3": "COARSE-3PC"}
 EXP3_PANEL = {
     "fscore_vs_n": dict(x="samp_size", y="fscore", hue="num_nodes"),
     "runtime_vs_n": dict(x="samp_size", y="runtime_sec", hue="num_nodes"),
@@ -87,7 +83,7 @@ rule plot_exp3:
         panels=lambda w: [
             dict(
                 out=f"{stem}_{m}",
-                filter={"density": float(w.density), "method": ps_display[m]},
+                filter={"density": float(w.density), "method": ORACLE_LABELS[m]},
                 **EXP3_PANEL[stem],
             )
             for stem in EXP3_STEMS

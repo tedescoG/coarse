@@ -20,16 +20,19 @@ import _plot_style as ps
 ps.apply_style()
 
 df = pd.read_csv(snakemake.input[0], dtype={"targets_per_interv": str})
-if "method" in df.columns:
-    df = ps.display_methods(df)
 
 
 def _subset(panel: dict) -> pd.DataFrame:
+    """Filter, then map method labels to display names -- in that order, so a panel's
+    `filter` names the evaluate.py label the rule already knows and no rule file has to
+    mirror METHOD_DISPLAY."""
     sub = df
     for column, value in panel.get("filter", {}).items():
         sub = sub[sub[column] == value]
     if sub.empty:
         raise ValueError(f"panel {panel['out']!r}: no rows after filter {panel.get('filter')}")
+    if "method" in sub.columns:
+        sub = ps.display_methods(sub)
     sub = sub.copy()
     hue = panel["hue"]
     if panel.get("hue_order"):
@@ -43,25 +46,6 @@ def _subset(panel: dict) -> pd.DataFrame:
         raise ValueError(f"panel {panel['out']!r}: hue values outside hue_order={order}")
     sub[hue] = pd.Categorical(sub[hue], categories=order, ordered=True)
     return sub
-
-
-def _style(ax, panel: dict, sub: pd.DataFrame, *, xlabel: bool, ylabel: bool) -> None:
-    """Facet-branch styling only; the single-panel branch gets the same policy from
-    _plot_style.line_panel."""
-    x, y = panel["x"], panel["y"]
-    if x in ("samp_size", "num_nodes"):
-        ax.set_xscale("log")
-        ps.format_axis(ax.xaxis, x, values=sorted(sub[x].unique()))
-    elif x == "lambda_pen":
-        ax.set_xscale("log", base=2)
-        ps.format_axis(ax.xaxis, x)
-    if y in ps.LOG_Y:
-        ax.set_yscale("log")
-        ps.format_axis(ax.yaxis, y)
-    if y in ps.UNIT_RANGE:
-        ax.set_ylim(0, 1)
-    ax.set_xlabel(ps.label(x) if xlabel else "")
-    ax.set_ylabel(ps.label(y) if ylabel else "")
 
 
 for panel in snakemake.params.panels:
@@ -82,18 +66,18 @@ for panel in snakemake.params.panels:
         style_order=levels,
         palette=ps.hue_palette(hue, levels),
         markers=ps.hue_markers(hue, levels),
-        dashes=True,
-        estimator="median",
-        errorbar="ci",
-        linewidth=2.0,
-        markersize=8,
         kind="line", col=panel["col"], height=4.8, aspect=1.33,
+        **ps.LINE_KWARGS,
         facet_kws={"sharey": True, "sharex": True, "legend_out": False},
     )
     axes = g.axes
+    values = sorted(sub[panel["x"]].unique())
     for i in range(axes.shape[0]):
         for j in range(axes.shape[1]):
-            _style(axes[i, j], panel, sub, xlabel=(i == axes.shape[0] - 1), ylabel=(j == 0))
+            ps.style_axes(
+                axes[i, j], panel["x"], panel["y"], values=values,
+                xlabel=(i == axes.shape[0] - 1), ylabel=(j == 0),
+            )
     g.set_titles(ps.label(panel["col"]) + " = {col_name}")
     ps.place_legend(g, ps.label(hue))
     ps.finish(g.figure, out_path)

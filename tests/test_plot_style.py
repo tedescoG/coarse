@@ -48,23 +48,27 @@ def test_node_count_column_is_labelled_nodes():
 
 def test_apply_style_leaves_the_default_font():
     """After apply_style() the font family is matplotlib's default and mathtext is not cm."""
-    ps.apply_style()
-    assert matplotlib.rcParams["font.family"] == ["sans-serif"]
-    assert matplotlib.rcParams["mathtext.fontset"] != "cm"
+    with matplotlib.rc_context():
+        ps.apply_style()
+        assert matplotlib.rcParams["font.family"] == ["sans-serif"]
+        assert matplotlib.rcParams["mathtext.fontset"] != "cm"
 
 
 def test_place_legend_puts_a_single_panel_legend_inside_the_axes():
-    """On a single Axes the legend's drawn box lies within the axes' drawn box."""
-    fig, ax = plt.subplots()
-    ax.plot([0, 1], [0, 1], label="a")
-    ax.plot([0, 1], [1, 0], label="b")
-    ps.place_legend(ax, "m")
-    fig.canvas.draw()
-    legend_box = ax.get_legend().get_window_extent()
-    axes_box = ax.get_window_extent()
-    assert axes_box.x0 <= legend_box.x0 and legend_box.x1 <= axes_box.x1
-    assert axes_box.y0 <= legend_box.y0 and legend_box.y1 <= axes_box.y1
-    plt.close(fig)
+    """At the suite's font scale, on a single Axes, the legend's drawn box lies within the
+    axes' drawn box."""
+    with matplotlib.rc_context():
+        ps.apply_style()
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1], label="a")
+        ax.plot([0, 1], [1, 0], label="b")
+        ps.place_legend(ax, "m")
+        fig.canvas.draw()
+        legend_box = ax.get_legend().get_window_extent()
+        axes_box = ax.get_window_extent()
+        assert axes_box.x0 <= legend_box.x0 and legend_box.x1 <= axes_box.x1
+        assert axes_box.y0 <= legend_box.y0 and legend_box.y1 <= axes_box.y1
+        plt.close(fig)
 
 
 def test_display_methods_maps_and_rejects_unknown():

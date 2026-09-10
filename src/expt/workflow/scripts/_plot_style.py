@@ -77,12 +77,6 @@ def apply_style() -> None:
     sans-serif text and default mathtext for the 10^k / 2^k ticks. No usetex: must render
     without TeX."""
     sns.set_theme(style="ticks", context="paper", font_scale=2.3, palette=CATEGORICAL)
-    plt.rcParams.update(
-        {
-            "savefig.bbox": "tight",
-            "savefig.pad_inches": 0.03,
-        }
-    )
 
 
 def ordinal_palette(n: int) -> list:
@@ -159,6 +153,29 @@ def format_axis(axis, column: str, values=None) -> None:
     axis.set_minor_formatter(NullFormatter())
 
 
+# Every line figure in the suite draws the median across seeds with a bootstrap CI band.
+LINE_KWARGS = dict(dashes=True, estimator="median", errorbar="ci", linewidth=2.0, markersize=8)
+
+
+def style_axes(ax, x, y, *, values=None, xlabel=True, ylabel=True) -> None:
+    """Scales, tick policy, [0, 1] limits and axis labels for one panel, keyed by column
+    name. `values` is the x grid, required when x is num_nodes. Pass xlabel/ylabel False on
+    a facet whose label belongs to the edge of the grid rather than to the panel."""
+    if x in ("samp_size", "num_nodes"):
+        ax.set_xscale("log")
+        format_axis(ax.xaxis, x, values=values)
+    elif x == "lambda_pen":
+        ax.set_xscale("log", base=2)
+        format_axis(ax.xaxis, x)
+    if y in LOG_Y:
+        ax.set_yscale("log")
+        format_axis(ax.yaxis, y)
+    if y in UNIT_RANGE:
+        ax.set_ylim(0, 1)
+    ax.set_xlabel(label(x) if xlabel else "")
+    ax.set_ylabel(label(y) if ylabel else "")
+
+
 def place_legend(target, title: str | None) -> None:
     """Single panel (an Axes): inside the axes, in whichever corner is emptiest. Grid (a
     seaborn FacetGrid): in the right margin, where no panel can be covered. The Axes branch
@@ -172,9 +189,11 @@ def place_legend(target, title: str | None) -> None:
 
 
 def finish(fig, path) -> None:
-    """Save and close. bbox is explicit so a legend in a grid's right margin survives even
-    if the caller never ran apply_style()."""
-    fig.savefig(path, bbox_inches="tight")
+    """Save and close. The bbox settings are arguments rather than rcParams so they hold
+    even if the caller never ran apply_style(); every figure in the suite saves here, so
+    this is the one place that decides them. `tight` is what keeps a legend in a grid's
+    right margin inside the page."""
+    fig.savefig(path, bbox_inches="tight", pad_inches=0.03)
     plt.close(fig)
 
 
@@ -203,20 +222,8 @@ def line_panel(sub, *, x, y, hue, out_path, hue_order=None) -> None:
         data=sub, x=x, y=y, hue=hue, style=hue,
         hue_order=order, style_order=order,
         palette=hue_palette(hue, order), markers=hue_markers(hue, order),
-        dashes=True, estimator="median", errorbar="ci", linewidth=2.0, markersize=8, ax=ax,
+        ax=ax, **LINE_KWARGS,
     )
-    if x in ("samp_size", "num_nodes"):
-        ax.set_xscale("log")
-        format_axis(ax.xaxis, x, values=sorted(sub[x].unique()))
-    elif x == "lambda_pen":
-        ax.set_xscale("log", base=2)
-        format_axis(ax.xaxis, x)
-    if y in LOG_Y:
-        ax.set_yscale("log")
-        format_axis(ax.yaxis, y)
-    if y in UNIT_RANGE:
-        ax.set_ylim(0, 1)
-    ax.set_xlabel(label(x))
-    ax.set_ylabel(label(y))
+    style_axes(ax, x, y, values=sorted(sub[x].unique()))
     place_legend(ax, label(hue))
     finish(fig, out_path)

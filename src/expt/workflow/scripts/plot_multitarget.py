@@ -91,7 +91,10 @@ def _render_summary(df: pd.DataFrame, out_path: str) -> None:
         legend_out=False,
     )
     g.set_axis_labels(ps.label("targets_per_interv"), ps.label(metric))
-    g.set_titles(col_template="p = {col_name}", row_template="density = {row_name}")
+    g.set_titles(
+        col_template=f"{ps.label('num_nodes')} = {{col_name}}",
+        row_template=f"{ps.label('density')} = {{row_name}}",
+    )
     if metric in ps.UNIT_RANGE:
         for ax in g.axes.flat:
             ax.set_ylim(0, 1)

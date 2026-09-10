@@ -35,15 +35,13 @@ for idx, value in enumerate(values):
         data=sub, x="lambda_pen", y="fscore", hue="method", style="method",
         hue_order=order, style_order=order,
         palette=ps.hue_palette("method", order), markers=ps.hue_markers("method", order),
-        dashes=True, estimator="median", errorbar="ci", linewidth=2.0, markersize=8, ax=ax,
-        legend=(idx == 0),
+        ax=ax, legend=(idx == 0), **ps.LINE_KWARGS,
     )
-    ax.set_xscale("log", base=2)
-    ps.format_axis(ax.xaxis, "lambda_pen")
-    ax.set_ylim(0, 1)
+    ps.style_axes(
+        ax, "lambda_pen", "fscore",
+        xlabel=(idx >= len(values) - ncols), ylabel=(idx % ncols == 0),
+    )
     ax.set_title(title.format(value))
-    ax.set_xlabel(ps.label("lambda_pen") if idx >= len(values) - ncols else "")
-    ax.set_ylabel(ps.label("fscore") if idx % ncols == 0 else "")
 for ax in axes_flat[len(values):]:
     ax.set_visible(False)
 
