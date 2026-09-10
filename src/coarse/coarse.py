@@ -105,8 +105,8 @@ def _normalize_data_dict(
 
 
 def _check_columns_non_degenerate(key: EnvKey, arr: np.ndarray) -> None:
-    """Raise ``ValueError`` if ``arr`` has a constant column or two exactly
-    identical columns."""
+    """Raise ``ValueError`` if ``arr`` has a constant column, two identical
+    columns, or (when ``n > p``) linearly dependent columns after centering."""
     constant = np.flatnonzero(np.ptp(arr, axis=0) == 0.0)
     if constant.size:
         raise ValueError(
@@ -122,6 +122,17 @@ def _check_columns_non_degenerate(key: EnvKey, arr: np.ndarray) -> None:
     if dup.size:
         i, j = sorted((int(order[dup[0]]), int(order[dup[0] + 1])))
         raise ValueError(f"env {key!r}: columns {i} and {j} are identical")
+    n = arr.shape[0]
+    if n > p:
+        # Only numerically exact dependence trips this: `matrix_rank` uses the
+        # default tolerance `s_max * max(n, p) * eps`, so a noisy linear child
+        # keeps full rank. Undersized envs (n <= p) are left to the -inf path.
+        centered = arr - arr.mean(axis=0, keepdims=True)
+        rank = int(np.linalg.matrix_rank(centered))
+        if rank < p:
+            raise ValueError(
+                f"env {key!r}: columns are linearly dependent (rank {rank} < {p})"
+            )
 
 
 def _materialize_dag(
@@ -167,6 +178,12 @@ def _run_score_phase(
     When ``k`` is not None (running kPC-COARSE), scales every env's columns by the
     *observational* standard deviation.
     """
+    if k is not None and (
+        isinstance(k, bool) or not isinstance(k, (int, np.integer)) or k < 1
+    ):
+        raise ValueError(f"k must be a positive integer, got {k!r}")
+    if lambda_pen < 0:
+        raise ValueError(f"lambda_pen must be >= 0, got {lambda_pen!r}")
     centered_env_arrays: dict[EnvKey, np.ndarray] = {
         ek: v - v.mean(axis=0, keepdims=True) for ek, v in env_arrays.items()
     }

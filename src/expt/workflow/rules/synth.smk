@@ -40,11 +40,9 @@ rule collect:
         expand(
             coarse_path + "metrics.csv",
             num_nodes=[10],
-            seed=range(10),
+            seed=range(20),
             density=[0.2, 0.5, 0.8],
             samp_size=[
-                100,
-                200,
                 500,
                 1000,
                 2000,
@@ -72,22 +70,22 @@ rule plot:
         "../scripts/plot.py"
 
 
-# Cap num_nodes at 100: at p=200 the synthetic LGANM data has deep multiplicative
-# chains producing near-exact linear dependencies inside large partition blocks
-# (122-155 features). Cholesky of the block-Σ̂ fails and the BIC scorer short-circuits to -inf, which
-# COARSE silently saves as a degenerate (0-edge, score=-inf) model. The kPC
-# scalability sweeps stay at p=200 because SVD projects each block to k_j dims.
+# The generator standardizes every variable to unit variance (iSCM, _common.make_dataset), so
+# nothing breaks numerically as p grows; the earlier cap at p=100 (raw LGANM variances
+# snowballed, the block-Σ̂ Cholesky failed at p=200) is gone. Budget: a dataset at
+# p=500, n=100000 is 6 environments x 0.4 GB = 2.4 GB on disk and in memory during fit,
+# so keep --cores modest at the top of this grid.
 rule collect_scalability:
     input:
         expand(
             coarse_path + "metrics.csv",
             graph=["er"],
-            num_nodes=[10, 20, 50, 100],
-            seed=range(10),
+            num_nodes=[10, 20, 50, 100, 200, 500],
+            seed=range(20),
             density=[0.2],
             num_intervs=[5],
             samp_size=[
-                100,
+                500,
                 1000,
                 10000,
                 100000,

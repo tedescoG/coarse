@@ -160,6 +160,8 @@ def compute_M(
         raise ValueError(
             f"data_dict must contain a baseline env keyed {baseline_key!r}"
         )
+    if not 0.0 < alpha < 1.0:
+        raise ValueError(f"alpha must lie in (0, 1), got {alpha!r}")
     test_name_lc = test_name.lower()
     if test_name_lc not in TEST_REGISTRY:
         raise ValueError(

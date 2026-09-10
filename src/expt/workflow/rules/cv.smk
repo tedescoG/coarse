@@ -32,11 +32,9 @@ rule collect_cv:
         expand(
             cv_path + "metrics.csv",
             num_nodes=[10],
-            seed=range(10),
+            seed=range(20),
             density=[0.2, 0.5, 0.8],
             samp_size=[
-                100,
-                200,
                 500,
                 1000,
                 2000,
@@ -69,11 +67,8 @@ rule plot_cv:
 # fold) cell returns -inf, tripping COARSECV's "all pairs failed" RuntimeError.
 # Not an identifiable regime; no point burning compute on it.
 #
-# Cap num_nodes at 100: at p=200 the synthetic LGANM data has deep multiplicative
-# chains producing near-exact linear dependencies inside large partition blocks
-# (122-155 features). The train block-Σ is rank-deficient and Cholesky fails; 0/7 on-disk p=200 cells
-# admit a fully-finite all-folds α. Not an identifiable regime; matches the
-# spirit of the s > n guard.
+# No cap on num_nodes any more (see synth.smk: the iSCM generator removed the numerical
+# reason). The s > n guard drops p=500 at n=500.
 rule collect_scalability_cv:
     input:
         [
@@ -86,9 +81,9 @@ rule collect_scalability_cv:
                 seed=seed,
             )
             + "metrics.csv"
-            for n in [10, 20, 50, 100]
-            for s in [100, 1000, 10000, 100000]
-            for seed in range(10)
+            for n in [10, 20, 50, 100, 200, 500]
+            for s in [500, 1000, 10000, 100000]
+            for seed in range(20)
             if s > n
         ],
     output:
