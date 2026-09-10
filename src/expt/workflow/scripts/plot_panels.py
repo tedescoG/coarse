@@ -33,6 +33,8 @@ def _subset(panel: dict) -> pd.DataFrame:
     hue = panel["hue"]
     order = panel.get("hue_order") or sorted(sub[hue].unique())
     sub[hue] = pd.Categorical(sub[hue], categories=order, ordered=True)
+    if sub[hue].isna().any():
+        raise ValueError(f"panel {panel['out']!r}: hue values outside hue_order={order}")
     return sub
 
 

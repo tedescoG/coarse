@@ -31,6 +31,9 @@ for idx, value in enumerate(values):
     sub = df[df[facet] == value]
     if sub.empty:
         raise ValueError(f"no rows with {facet} == {value!r}")
+    unknown = set(sub["method"]) - set(METHOD_ORDER)
+    if unknown:
+        raise ValueError(f"method values outside METHOD_ORDER={METHOD_ORDER}: {unknown}")
     sns.lineplot(
         data=sub, x="lambda_pen", y="fscore", hue="method", style="method",
         hue_order=METHOD_ORDER, style_order=METHOD_ORDER, markers=True, dashes=True,
