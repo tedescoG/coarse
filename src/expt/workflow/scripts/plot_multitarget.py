@@ -158,23 +158,9 @@ def _render_summary(df: pd.DataFrame, out_path: str) -> None:
     _save(g.fig, out_path)
 
 
-df = pd.read_csv(snakemake.input[0])
-# `targets_per_interv` may not exist in the schema yet if the CSV was created
-# by an older evaluate.py. The dataset path already carries it as a wildcard,
-# so it's available on the snakemake.wildcards object during evaluate.py —
-# but evaluate.py wasn't modified, so it's the wildcard handling at *this*
-# stage that owns this column. Recover it from the file path stored in the
-# input by re-reading the CSV through collect.py — easiest path: re-derive
-# tpi from the metrics CSV's wildcard-bearing path. But because collect.py
-# concatenates without preserving paths, we instead require evaluate.py to
-# pick the tpi off snakemake.wildcards. If absent here, fall back to a
-# parse: the dataframe's index alone cannot reconstruct it.
-if "targets_per_interv" not in df.columns:
-    raise RuntimeError(
-        "results.csv is missing `targets_per_interv` column. "
-        "evaluate.py must be updated to log this wildcard, or the rule "
-        "file must inject it via a params block."
-    )
+# `targets_per_interv` is a string column ("2", "1to5"); without the dtype a numeric-only
+# CSV would parse it as int and the string equality filter below would match nothing.
+df = pd.read_csv(snakemake.input[0], dtype={"targets_per_interv": str})
 
 for out_path in snakemake.output:
     name = Path(out_path).name

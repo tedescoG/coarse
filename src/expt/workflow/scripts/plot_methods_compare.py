@@ -1,5 +1,6 @@
 """One PDF per (graph, num_nodes, density, metric). Each panel shows 3
-method-lines (COARSE, COARSE-1PC, RePaRe) on a common samp_size x-axis.
+method-lines (COARSE-oracle / kPC-k1-oracle / RePaRe-oracle, mapped to display
+names COARSE / COARSE-1PC / RePaRe) on a common samp_size x-axis.
 
 Output filenames follow the template
   results/methods_compare/{graph}_p={p}_dens={d}_{metric}.pdf
@@ -20,7 +21,9 @@ sns.set_palette("colorblind")
 # labels, tick labels, title AND legend.
 sns.set_context("paper", font_scale=2.3)
 
-METHOD_ORDER = ["COARSE", "COARSE-1PC", "RePaRe"]
+# evaluate.py labels every oracle run "<method>-oracle"; the legend carries the thesis names.
+DISPLAY = {"COARSE-oracle": "COARSE", "kPC-k1-oracle": "COARSE-1PC", "RePaRe-oracle": "RePaRe"}
+METHOD_ORDER = list(DISPLAY.values())
 PALETTE = {"COARSE": "C0", "COARSE-1PC": "C1", "RePaRe": "C2"}
 MARKERS = {"COARSE": "o", "COARSE-1PC": "s", "RePaRe": "^"}
 
@@ -52,6 +55,7 @@ def parse_output_path(path: str) -> dict:
 
 
 df = pd.read_csv(snakemake.input[0])
+df = df[df["method"].isin(DISPLAY)].assign(method=lambda d: d["method"].map(DISPLAY))
 
 for out_path in snakemake.output:
     keys = parse_output_path(out_path)
