@@ -26,11 +26,14 @@ num_nodes = int(snakemake.wildcards.num_nodes)
 num_intervs = int(snakemake.wildcards.num_intervs)
 graph = snakemake.wildcards["graph"]
 targets_size = parse_targets_per_interv(getattr(snakemake.wildcards, "targets_per_interv", None))
+# Absent on paths without a noise segment; every such path is Gaussian by construction.
+noise = getattr(snakemake.wildcards, "noise", "gaussian")
 # COARSE only supports soft (shift) interventions; anything else is a misconfiguration.
 normalize_intervention_type(getattr(snakemake.params, "intervention_type", "soft"))
 
 weights, targets, data_dict = make_dataset(
-    graph, num_nodes, num_intervs, density * (num_nodes - 1), seed, samp_size, targets_size
+    graph, num_nodes, num_intervs, density * (num_nodes - 1), seed, samp_size, targets_size,
+    noise=noise,
 )
 
 # Heterogeneous target-size sweeps (e.g. ``targets_per_interv="1to5"``) produce

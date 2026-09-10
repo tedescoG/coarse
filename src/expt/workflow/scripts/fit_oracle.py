@@ -1,7 +1,5 @@
-"""Fit COARSE under the oracle partition. Handles both the no-PCA baseline
-and the kPC variant; the k wildcard is optional, so this single script
-serves `rule fit_oracle` (kpc.smk, lambda.smk) and `rule fit_kpc_oracle` /
-`rule fit_lambda_kpc_oracle` (which carry k in their wildcard path).
+"""Fit COARSE under the oracle partition. Handles both the no-PCA baseline and the kPC
+variant: `k` comes from the rule params (`None` → plain COARSE), the same idiom as fit.py.
 """
 
 import pickle
@@ -22,11 +20,9 @@ intervention_type = normalize_intervention_type(
 )
 num_nodes = int(snakemake.wildcards.num_nodes)
 
-# Optional kPC wildcard — present for rules under kpc_oracle_path /
-# lambda_kpc_oracle_path, absent for the non-PCA oracle path. snakemake.wildcards
-# raises AttributeError on missing keys, hence the getattr default.
-k_raw = getattr(snakemake.wildcards, "k", None)
-k = int(k_raw) if k_raw is not None else None
+# Optional kPC param — the oracle rule maps the `method` wildcard to k (None for plain COARSE).
+k_param = getattr(snakemake.params, "k", None)
+k = int(k_param) if k_param is not None else None
 
 data = np.load(snakemake.input.data, allow_pickle=True)
 data_dict = build_data_dict(data, data["targets"], intervention_type)

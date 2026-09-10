@@ -1,14 +1,13 @@
-"""Evaluate a fitted COARSE model against the ground-truth DAG.
+"""Evaluate a fitted model against the ground-truth DAG.
 
-The ground-truth partition is built by stacking the per-intervention
-descendant masks column-wise into an M_true matrix and passing it to
-`infer_partition` — the same partition machinery the model uses, so any
-partition mismatch explains itself as an M-row mismatch rather than as a
-different algorithm.
+The ground-truth partition is built by stacking the per-intervention descendant masks
+column-wise into an M_true matrix and passing it to `infer_partition` — the same partition
+machinery the model uses, so any partition mismatch explains itself as an M-row mismatch
+rather than as a different algorithm.
 
-The output CSV schema is a cross-rule contract: `collect.py` and every plot
-script read it, and every method in the comparison is evaluated
-through this one script, distinguished only by `method_label`.
+The output CSV schema is a cross-rule contract: `collect.py` and every plot script read it,
+and every method is evaluated through this one script, distinguished only by the required
+`method_label` param. `lambda_pen` is likewise required so the column is never NaN.
 """
 
 import pickle
@@ -17,7 +16,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import adjusted_rand_score
 
-from _common import block_dag_prf, build_oracle_partition
+from _common import block_dag_prf, build_oracle_partition, partition_labels
 
 density = float(snakemake.wildcards.density)
 samp_size = int(snakemake.wildcards.samp_size)
@@ -25,34 +24,24 @@ seed = int(snakemake.wildcards.seed)
 num_nodes = int(snakemake.wildcards["num_nodes"])
 num_intervs = int(snakemake.wildcards["num_intervs"])
 graph_family = snakemake.wildcards["graph"]
-model = pickle.load(open(snakemake.input.model, "rb"))
-data = np.load(
-    snakemake.input.data,
-    allow_pickle=True,
-)
+# Both wildcards are absent on the oracle paths, which are Gaussian and single-target by
+# construction; the defaults are the true semantic values.
+noise = getattr(snakemake.wildcards, "noise", "gaussian")
+targets_per_interv = getattr(snakemake.wildcards, "targets_per_interv", "1")
+method_label = str(snakemake.params.method_label)
+lambda_pen = float(snakemake.params.lambda_pen)
+
+with open(snakemake.input.model, "rb") as f:
+    model = pickle.load(f)
+data = np.load(snakemake.input.data, allow_pickle=True)
 weights = data["weights"]
 targets = data["targets"]
 
 true_dag, _, _, true_partition = build_oracle_partition(weights, targets, num_nodes)
-
-true_labels = np.zeros(num_nodes, dtype=int)
-for label, part in enumerate(true_partition):
-    true_labels[list(part)] = label
-est_labels = np.zeros(len(true_dag))
-for label, part in enumerate(model.dag.nodes):
-    est_labels[list(part)] = label
+true_labels = partition_labels(true_partition, num_nodes)
+est_labels = partition_labels(model.dag.nodes, num_nodes)
 ar_index = adjusted_rand_score(true_labels, est_labels)
 precision, recall, f_score = block_dag_prf(model.dag, true_dag)
-
-method_label = getattr(snakemake.params, "method_label", "COARSE")
-metric_type = getattr(snakemake.params, "metric_type", "partition")
-lambda_pen = getattr(snakemake.params, "lambda_pen", np.nan)
-# `targets_per_interv` is only present on the multitarget.smk paths; for every
-# other rule file the wildcard is absent (those experiments are all
-# single-target by construction), so we default to "1" — the true semantic
-# value, which makes downstream filtering uniform across rule files.
-targets_per_interv = getattr(snakemake.wildcards, "targets_per_interv", "1")
-
 
 results = {
     "density": density,
@@ -62,7 +51,6 @@ results = {
     "num_intervs": num_intervs,
     "graph_family": graph_family,
     "method": method_label,
-    "metric_type": metric_type,
     "precision": precision,
     "recall": recall,
     "fscore": f_score,
@@ -71,5 +59,6 @@ results = {
     "score": float(getattr(model, "score", np.nan)),
     "lambda_pen": lambda_pen,
     "targets_per_interv": targets_per_interv,
+    "noise": noise,
 }
 pd.DataFrame([results]).to_csv(snakemake.output[0], index=False)

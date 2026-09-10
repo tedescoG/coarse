@@ -96,6 +96,18 @@ def build_oracle_partition(weights: np.ndarray, targets, num_nodes: int):
     return true_dag, M_true, env_order, partition
 
 
+def partition_labels(blocks, num_nodes: int) -> np.ndarray:
+    """Integer block label per node: the index of the block containing it, in ``blocks``
+    iteration order. ``blocks`` is any iterable of node-index collections (``frozenset``
+    blocks from ``infer_partition`` or the tuple nodes of a block DAG). The one ARI label
+    construction shared by evaluate.py and the CausalChamber scripts.
+    """
+    labels = np.zeros(num_nodes, dtype=int)
+    for label, block in enumerate(blocks):
+        labels[list(block)] = label
+    return labels
+
+
 def block_dag_prf(est_dag: nx.DiGraph, true_dag: nx.DiGraph) -> tuple[float, float, float]:
     """Precision, recall and F-score of the estimated block DAG.
 

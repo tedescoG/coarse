@@ -1,7 +1,7 @@
 """Fit COARSECV (k-fold α-selection wrapper around COARSE) on a synthetic dataset.
 
 Mirrors `fit.py` but swaps `COARSE().fit(...)` for `cv_coarse(...)`. The CV
-defaults from `coarse.cv` (alpha_grid=DEFAULT_ALPHA_GRID, n_folds=5) are used —
+defaults from `coarse.cv` (alpha_grid=DEFAULT_ALPHA_GRID, n_folds=10) are used —
 the outer Snakemake sweep varies data-generation parameters only.
 
 After the CV run we overwrite `fit_runtime_sec` with `cv_runtime_sec` so the
