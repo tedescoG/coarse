@@ -23,6 +23,10 @@ LAMBDA_PEN = 1.0
 REFINE_TEST = "welch"
 INTERVENTION_TYPE = "soft"
 
+# Every plot script imports this module; Snakemake hashes only the `script:` file, so it
+# must be an explicit input or a style change leaves every figure stale.
+PLOT_STYLE = "workflow/scripts/_plot_style.py"
+
 # Full-pipeline methods (partition discovery + scoring) and their evaluate.py labels.
 PIPELINE_METHODS = ["coarse", "cv", "onepc"]
 PIPELINE_LABELS = {"coarse": "COARSE", "cv": "COARSE-CV", "onepc": "COARSE-1PC"}

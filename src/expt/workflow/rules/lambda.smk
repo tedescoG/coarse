@@ -31,6 +31,7 @@ rule collect_lambda_samp:
 rule plot_lambda_samp:
     input:
         rules.collect_lambda_samp.output[0],
+        style=PLOT_STYLE,
     output:
         pdf="results/lambda/lambda_samp.pdf",
     params:
@@ -64,6 +65,7 @@ rule collect_lambda_density:
 rule plot_lambda_density:
     input:
         rules.collect_lambda_density.output[0],
+        style=PLOT_STYLE,
     output:
         pdf="results/lambda/lambda_density.pdf",
     params:

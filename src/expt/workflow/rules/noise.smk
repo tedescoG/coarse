@@ -25,6 +25,7 @@ rule collect_noise:
 rule plot_noise:
     input:
         rules.collect_noise.output[0],
+        style=PLOT_STYLE,
     output:
         ari="results/noise/{graph}_ari_ivn={num_intervs}.pdf",
         fscore="results/noise/{graph}_fscore_ivn={num_intervs}.pdf",

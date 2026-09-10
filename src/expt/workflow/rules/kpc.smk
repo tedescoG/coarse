@@ -39,6 +39,7 @@ rule collect_exp2:
 rule plot_exp2:
     input:
         rules.collect_exp2.output[0],
+        style=PLOT_STYLE,
     output:
         fscore="results/kpc/exp2_fscore.pdf",
         runtime="results/kpc/exp2_runtime.pdf",
@@ -75,6 +76,7 @@ rule collect_exp3:
 rule plot_exp3:
     input:
         rules.collect_exp3.output[0],
+        style=PLOT_STYLE,
     output:
         **{
             f"{stem}_{m}": f"results/kpc/exp3/density={{density}}/{stem}_{m}.pdf"

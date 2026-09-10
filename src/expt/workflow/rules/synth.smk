@@ -26,6 +26,7 @@ rule collect_synth:
 rule plot_synth:
     input:
         rules.collect_synth.output[0],
+        style=PLOT_STYLE,
     output:
         ari="results/synth/{method}/{graph}_ari_ivn={num_intervs}.pdf",
         fscore="results/synth/{method}/{graph}_fscore_ivn={num_intervs}.pdf",
@@ -65,6 +66,7 @@ rule collect_scalability:
 rule plot_scalability:
     input:
         rules.collect_scalability.output[0],
+        style=PLOT_STYLE,
     output:
         ari_samp="results/synth/{method}/scalability_ari_samp.pdf",
         time_samp="results/synth/{method}/scalability_time_samp.pdf",

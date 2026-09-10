@@ -36,6 +36,7 @@ rule collect_multitarget:
 rule plot_multitarget:
     input:
         rules.collect_multitarget.output[0],
+        style=PLOT_STYLE,
     output:
         expand(
             "results/multitarget/{graph}_p={p}_dens={d}_tpi={tpi}_{metric}.pdf",

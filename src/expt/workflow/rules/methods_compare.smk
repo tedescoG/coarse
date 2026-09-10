@@ -30,6 +30,7 @@ rule collect_methods_compare:
 rule plot_methods_compare:
     input:
         rules.collect_methods_compare.output[0],
+        style=PLOT_STYLE,
     output:
         expand(
             "results/methods_compare/{graph}_p={p}_dens={d}_{metric}.pdf",
