@@ -4,8 +4,6 @@
 SYNTH_IVNS = [2, 5, 8]
 SYNTH_GRAPHS = ["er", "sf"]
 
-AXIS_N = "sample size (n)"
-
 
 rule collect_synth:
     input:
@@ -33,26 +31,8 @@ rule plot_synth:
         fscore="results/synth/{method}/{graph}_fscore_ivn={num_intervs}.pdf",
     params:
         panels=[
-            dict(
-                out="ari",
-                x="samp_size",
-                y="ari",
-                hue="density",
-                ylim=(0, 1),
-                xlabel=AXIS_N,
-                ylabel="ARI ↑",
-                legend="density",
-            ),
-            dict(
-                out="fscore",
-                x="samp_size",
-                y="fscore",
-                hue="density",
-                ylim=(0, 1),
-                xlabel=AXIS_N,
-                ylabel="F-score ↑",
-                legend="density",
-            ),
+            dict(out="ari", x="samp_size", y="ari", hue="density"),
+            dict(out="fscore", x="samp_size", y="fscore", hue="density"),
         ],
     script:
         "../scripts/plot_panels.py"
@@ -91,36 +71,9 @@ rule plot_scalability:
         time_nodes="results/synth/{method}/scalability_time_nodes.pdf",
     params:
         panels=[
-            dict(
-                out="ari_samp",
-                x="samp_size",
-                y="ari",
-                hue="num_nodes",
-                ylim=(0, 1),
-                xlabel=AXIS_N,
-                ylabel="ARI ↑",
-                legend="nodes (d)",
-            ),
-            dict(
-                out="time_samp",
-                x="samp_size",
-                y="runtime_sec",
-                hue="num_nodes",
-                logy=True,
-                xlabel=AXIS_N,
-                ylabel="run time (s)",
-                legend="nodes (d)",
-            ),
-            dict(
-                out="time_nodes",
-                x="num_nodes",
-                y="runtime_sec",
-                hue="samp_size",
-                logy=True,
-                xlabel="number of nodes (d)",
-                ylabel="run time (s)",
-                legend=AXIS_N,
-            ),
+            dict(out="ari_samp", x="samp_size", y="ari", hue="num_nodes"),
+            dict(out="time_samp", x="samp_size", y="runtime_sec", hue="num_nodes"),
+            dict(out="time_nodes", x="num_nodes", y="runtime_sec", hue="samp_size"),
         ],
     script:
         "../scripts/plot_panels.py"

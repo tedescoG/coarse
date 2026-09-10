@@ -37,10 +37,6 @@ rule plot_noise:
                 hue="noise",
                 hue_order=NOISES,
                 col="density",
-                ylim=(0, 1),
-                xlabel="sample size (n)",
-                ylabel="ARI ↑",
-                legend="noise",
             ),
             dict(
                 out="fscore",
@@ -49,10 +45,6 @@ rule plot_noise:
                 hue="noise",
                 hue_order=NOISES,
                 col="density",
-                ylim=(0, 1),
-                xlabel="sample size (n)",
-                ylabel="F-score ↑",
-                legend="noise",
             ),
         ],
     script:

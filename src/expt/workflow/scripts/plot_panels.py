@@ -1,15 +1,14 @@
 """Generic line-panel renderer: one seaborn lineplot per entry of `snakemake.params.panels`.
 
-Replaces plot.py / scalability_plot.py / plot_exp2.py / plot_exp3.py. Each panel is a dict:
+Each panel is a dict:
     out        key of the output file in `snakemake.output`
     x, y, hue  column names; the hue column is cast to an ordered categorical so a numeric
                hue lists its real levels in the legend instead of sampled round ticks
     filter     optional {column: value} equality filter applied before plotting
-    hue_order  optional explicit level order (default: sorted unique values)
+    hue_order  optional explicit level order (default: METHOD_ORDER for `method`, else sorted)
     col        optional column to facet on (one row of panels sharing the y axis)
-    logx/logy  axis scales (default log x, linear y)
-    ylim       optional (lo, hi)
-    xlabel, ylabel, legend   axis labels and legend title
+Scales, limits, labels, palette, markers and legend placement come from _plot_style, keyed
+by column name, so every rule file gets identical styling for free.
 Every panel draws the median across seeds with a bootstrap CI band.
 """
 
@@ -17,10 +16,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-sns.set_palette("colorblind")
-sns.set_context("paper", font_scale=2.3)
+import _plot_style as ps
+
+ps.apply_style()
 
 df = pd.read_csv(snakemake.input[0], dtype={"targets_per_interv": str})
+if "method" in df.columns:
+    df = ps.display_methods(df)
 
 
 def _subset(panel: dict) -> pd.DataFrame:
@@ -31,54 +33,70 @@ def _subset(panel: dict) -> pd.DataFrame:
         raise ValueError(f"panel {panel['out']!r}: no rows after filter {panel.get('filter')}")
     sub = sub.copy()
     hue = panel["hue"]
-    order = panel.get("hue_order") or sorted(sub[hue].unique())
+    if panel.get("hue_order"):
+        order = list(panel["hue_order"])
+    elif hue == "method":
+        order = ps.method_order(sub[hue].unique())
+    else:
+        order = sorted(sub[hue].unique())
     sub[hue] = pd.Categorical(sub[hue], categories=order, ordered=True)
     if sub[hue].isna().any():
         raise ValueError(f"panel {panel['out']!r}: hue values outside hue_order={order}")
     return sub
 
 
-def _style(ax, panel: dict) -> None:
-    if panel.get("logx", True):
+def _style(ax, panel: dict, sub: pd.DataFrame, *, xlabel: bool, ylabel: bool) -> None:
+    x, y = panel["x"], panel["y"]
+    if x in ("samp_size", "num_nodes"):
         ax.set_xscale("log")
-    if panel.get("logy", False):
+        ps.format_axis(ax.xaxis, x, values=sorted(sub[x].unique()))
+    elif x == "lambda_pen":
+        ax.set_xscale("log", base=2)
+        ps.format_axis(ax.xaxis, x)
+    if y in ps.LOG_Y:
         ax.set_yscale("log")
-    if panel.get("ylim") is not None:
-        ax.set_ylim(*panel["ylim"])
-    ax.set_xlabel(panel.get("xlabel", panel["x"]))
-    ax.set_ylabel(panel.get("ylabel", panel["y"]))
+        ps.format_axis(ax.yaxis, y)
+    if y in ps.UNIT_RANGE:
+        ax.set_ylim(0, 1)
+    ax.set_xlabel(ps.label(x) if xlabel else "")
+    ax.set_ylabel(ps.label(y) if ylabel else "")
 
 
 for panel in snakemake.params.panels:
     sub = _subset(panel)
+    hue = panel["hue"]
+    levels = list(sub[hue].cat.categories)
     line_kwargs = dict(
         data=sub,
         x=panel["x"],
         y=panel["y"],
-        hue=panel["hue"],
-        style=panel["hue"],
-        markers=True,
+        hue=hue,
+        style=hue,
+        hue_order=levels,
+        style_order=levels,
+        palette=ps.hue_palette(hue, levels),
+        markers=ps.hue_markers(hue, levels),
         dashes=True,
         estimator="median",
         errorbar="ci",
         linewidth=2.0,
-        markersize=7,
+        markersize=8,
     )
     if panel.get("col") is None:
         fig, ax = plt.subplots(figsize=(6.4, 4.8))
         sns.lineplot(ax=ax, **line_kwargs)
-        _style(ax, panel)
-        # loc="best" picks the emptiest corner; the translucent box keeps curves visible.
-        ax.legend(title=panel.get("legend"), loc="best", frameon=True, framealpha=0.6, facecolor="white")
+        _style(ax, panel, sub, xlabel=True, ylabel=True)
+        ps.place_legend(ax, ps.label(hue))
     else:
-        g = sns.relplot(kind="line", col=panel["col"], height=5, aspect=1.0, facet_kws={"sharey": True}, **line_kwargs)
-        for ax in g.axes.flat:
-            _style(ax, panel)
-        g.set_titles(panel["col"] + " = {col_name}")
-        sns.move_legend(
-            g, "lower center", bbox_to_anchor=(0.5, -0.08),
-            ncol=len(sub[panel["hue"]].cat.categories), title=panel.get("legend"), frameon=False,
+        g = sns.relplot(
+            kind="line", col=panel["col"], height=4.8, aspect=1.33,
+            facet_kws={"sharey": True, "sharex": True}, **line_kwargs,
         )
+        axes = g.axes
+        for i in range(axes.shape[0]):
+            for j in range(axes.shape[1]):
+                _style(axes[i, j], panel, sub, xlabel=(i == axes.shape[0] - 1), ylabel=(j == 0))
+        g.set_titles(ps.label(panel["col"]) + " = {col_name}")
+        ps.place_legend(g, ps.label(hue))
         fig = g.figure
-    fig.savefig(snakemake.output[panel["out"]], bbox_inches="tight", pad_inches=0.02)
-    plt.close(fig)
+    ps.finish(fig, snakemake.output[panel["out"]])
