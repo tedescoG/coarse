@@ -3,7 +3,8 @@
 #   lambda_samp     — λ × samp_size at density 0.5 (documented low-n exception).
 #   lambda_density  — λ × density at n = 1000.
 # Shared fits: lambda_samp's λ=1 cells are kpc.smk exp2's; lambda_density's density-0.5
-# column is lambda_samp's n=1000 column.
+# column is lambda_samp's n=1000 column (full grid only; the smoke LAMBDA_SAMP has no
+# n=1000).
 LAMBDA_NODES = [30]
 LAMBDA_DENSITY_SAMP = [1000]
 

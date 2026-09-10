@@ -28,7 +28,7 @@ include: "rules/causalchamber.smk"
 # Convenience targets, one per experiment (e.g. `snakemake exp2 --cores all`): synth_main,
 # synth_scalability, synth_all, noise_all, exp2, exp3, lambda_samp, lambda_density,
 # lambda_all, methods_compare_all, multitarget_all, causalchamber. `--config smoke=1`
-# shrinks every synthetic grid (see rules/common.smk).
+# shrinks every synthetic grid (see rules/common.smk; targets must precede --config).
 rule all:
     default_target: True
     input:

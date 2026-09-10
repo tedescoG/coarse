@@ -1,6 +1,7 @@
 # Head-to-head under the oracle partition: COARSE vs 1PC-COARSE (kpc1) vs RePaRe. Each
 # receives the same oracle partition, so only the edge-recovery half is benchmarked.
-# Shared fits: the coarse/kpc1 cells are kpc.smk exp3's; only the RePaRe arm is new work.
+# Shared fits: the coarse/kpc1 cells are kpc.smk exp3's; the RePaRe arm and the SAMP_SIZES
+# values outside SCAL_SAMP (n = 2000, 5000, 20000, 50000) are new work.
 MC_METHODS = ["coarse", "kpc1", "repare"]
 MC_NODES = [10, 20] if SMOKE else [10, 20, 50, 100]
 MC_METRICS = ["fscore", "precision", "recall", "runtime_sec"]

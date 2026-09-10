@@ -217,6 +217,20 @@ def test_partition_edge_metrics_delegates_to_block_dag_prf():
     }
 
 
+def test_block_dag_prf_counts_forward_block_edges():
+    est = nx.DiGraph()
+    est.add_nodes_from([(0,), (1,), (2, 3)])
+    est.add_edge((0,), (1,))
+    est.add_edge((2, 3), (1,))
+    truth = _true_chain()  # 0->1, 1->2, 2->3
+    # Reference over forward pairs in est node order: (0,)->(1,) and (1,)->(2,3) are true block
+    # edges; est has 1 TP of 2 edges, reference has 2 edges.
+    assert block_dag_prf(est, truth) == (0.5, 0.5, 0.5)
+    empty = nx.DiGraph()
+    empty.add_nodes_from([(0, 1, 2, 3)])
+    assert block_dag_prf(empty, truth) == (1, 1, 1)
+
+
 def test_build_block_data_dict_keys_and_types():
     blocks = {"obs": np.zeros((3, 2)), "rgb": np.ones((3, 2))}
     out = build_block_data_dict(blocks, {"rgb": {0, 1}})

@@ -1,8 +1,8 @@
 # kPC-COARSE under the oracle partition (COARSEOracle). Fits come from oracle.smk.
 #   exp2 — kPC vs plain COARSE at low n (documented exception to the n >= 500 floor).
 #   exp3 — scalability across (density, num_nodes) for COARSE / kPC-k1 / kPC-k3.
-# Shared fits: exp2's λ=1 cells are lambda_samp's λ=1 cells; exp3's coarse/kpc1 cells are
-# methods_compare's. Nothing is fit twice.
+# Shared fits: exp2's λ=1 cells at n ∈ LAMBDA_SAMP are lambda_samp's (n=200 is exp2-only);
+# exp3's coarse/kpc1 cells are methods_compare's. Nothing is fit twice.
 EXP2_NODES = [30]
 EXP3_NODES = [10, 20] if SMOKE else [10, 20, 50, 100, 200]
 EXP3_STEMS = ["fscore_vs_n", "runtime_vs_n", "runtime_vs_d"]

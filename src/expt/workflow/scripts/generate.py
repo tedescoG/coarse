@@ -26,7 +26,7 @@ num_nodes = int(snakemake.wildcards.num_nodes)
 num_intervs = int(snakemake.wildcards.num_intervs)
 graph = snakemake.wildcards["graph"]
 targets_size = parse_targets_per_interv(getattr(snakemake.wildcards, "targets_per_interv", None))
-# Absent on paths without a noise segment; every such path is Gaussian by construction.
+# Every DATA path carries a noise segment; the default only guards ad-hoc invocations.
 noise = getattr(snakemake.wildcards, "noise", "gaussian")
 # COARSE only supports soft (shift) interventions; anything else is a misconfiguration.
 normalize_intervention_type(getattr(snakemake.params, "intervention_type", "soft"))

@@ -39,7 +39,8 @@ ORACLE_K = {"coarse": None, "kpc1": 1, "kpc3": 3}
 NOISES = ["gaussian", "uniform", "laplace"]
 
 # `--config smoke=1` shrinks every grid to p <= 20 (30 where p is fixed), n <= 1000 and
-# 2 seeds. Smoke cells sit at the same paths as full-grid cells, so a full run reuses them.
+# 2 seeds. Smoke cells sit at the same paths as full-grid cells, so a full run reuses every
+# smoke cell whose (p, n) is also in the full grid.
 SMOKE = bool(int(config.get("smoke", 0)))
 SEEDS = list(range(2 if SMOKE else 20))
 DENSITIES = [0.2, 0.5, 0.8]
