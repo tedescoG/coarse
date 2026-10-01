@@ -1,15 +1,9 @@
-"""Generic line-panel renderer: one seaborn lineplot per entry of `snakemake.params.panels`.
-
-Each panel is a dict:
-    out        key of the output file in `snakemake.output`
-    x, y, hue  column names; the hue column is cast to an ordered categorical so a numeric
-               hue lists its real levels in the legend instead of sampled round ticks
-    filter     optional {column: value} equality filter applied before plotting
-    hue_order  optional explicit level order (default: METHOD_ORDER for `method`, else sorted)
-    col        optional column to facet on (one row of panels sharing the y axis)
-Scales, limits, labels, palette, markers and legend placement come from _plot_style, keyed
-by column name, so every rule file gets identical styling for free.
-Every panel draws the median across seeds with a bootstrap CI band.
+"""One line plot per entry of `snakemake.params.panels`, a dict with:
+    out        output key
+    x, y, hue  columns
+    filter     optional {column: value}
+    hue_order  optional level order
+    col        optional facet column
 """
 
 import pandas as pd
@@ -23,9 +17,7 @@ df = pd.read_csv(snakemake.input[0], dtype={"targets_per_interv": str})
 
 
 def _subset(panel: dict) -> pd.DataFrame:
-    """Filter, then map method labels to display names -- in that order, so a panel's
-    `filter` names the evaluate.py label the rule already knows and no rule file has to
-    mirror METHOD_DISPLAY."""
+    """Filter on evaluate.py labels, then map them to display names."""
     sub = df
     for column, value in panel.get("filter", {}).items():
         sub = sub[sub[column] == value]

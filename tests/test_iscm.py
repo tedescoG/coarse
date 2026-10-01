@@ -1,19 +1,16 @@
 """Tests for the iSCM standardization and sampling helpers in workflow/scripts/_common.py."""
 from __future__ import annotations
 
-import sys
 import warnings
-from pathlib import Path
 
+import networkx as nx
 import numpy as np
 import pytest
 from scipy import stats
 
 warnings.filterwarnings("ignore", message="No module named 'rpy2'.*")
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "src" / "expt" / "workflow" / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
-from _common import (  # noqa: E402
+from _common import (
     NOISE_FAMILIES,
     build_model,
     draw_noise_params,
@@ -23,9 +20,8 @@ from _common import (  # noqa: E402
     noise_distribution,
     sample_shift,
 )
-import networkx as nx  # noqa: E402
-from sempler import ANM, LGANM  # noqa: E402
-from sempler.generators import dag_avg_deg  # noqa: E402
+from sempler import ANM, LGANM
+from sempler.generators import dag_avg_deg
 
 P = 15
 HEAVY_TAILED = ("t3", "t4")  # infinite fourth moment: sample variances are not checked tightly

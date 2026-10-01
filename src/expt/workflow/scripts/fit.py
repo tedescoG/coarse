@@ -1,9 +1,4 @@
-"""Fit COARSE on a synthetic dataset produced by `generate.py`.
-
-Reads `alpha`, `lambda_pen` (the BIC penalty coefficient), `refine_test` and
-`intervention_type` from the rule params and pickles the fitted model for
-`evaluate.py`.
-"""
+"""Fit COARSE on one synthetic dataset and pickle the model."""
 
 import pickle
 import time
@@ -20,8 +15,6 @@ refine_test = ("welch" if refine_param is None else str(refine_param)).lower()
 intervention_type = normalize_intervention_type(
     getattr(snakemake.params, "intervention_type", "soft")
 )
-# Optional kPC param — present for the 1PC suite, absent for normal COARSE.
-# Same getattr-with-default shape as fit_oracle.py.
 k_param = getattr(snakemake.params, "k", None)
 k = int(k_param) if k_param is not None else None
 

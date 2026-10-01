@@ -1,4 +1,3 @@
-# Global wildcard constraints, declared once before any include so every rule shares them.
 wildcard_constraints:
     graph="er|sf",
     num_nodes=r"\d+",
@@ -22,9 +21,8 @@ include: "rules/methods_compare.smk"
 include: "rules/causalchamber.smk"
 
 
-# Convenience targets: densities_all, scalability_all, noise_all, methods_compare_all,
-# causalchamber, coarse_all (the COARSE-only sweeps). `--config smoke=1` shrinks every
-# synthetic grid and collects under results/smoke/; targets must precede --config.
+# Targets: densities_all, scalability_all, noise_all, methods_compare_all, causalchamber,
+# coarse_all, all. Put targets before `--config`.
 rule coarse_all:
     input:
         rules.densities_all.input,

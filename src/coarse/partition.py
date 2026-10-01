@@ -1,9 +1,4 @@
-"""Compute partitions, support and candidate parents pool from M.
-
-`infer_partition` returns the sorted row-class partition Π_E of M .
-`compute_supports` reads supp(π) from Definition 10 .
-`compute_candidate_pools` builds Pa⋆(π) from Corollary 1 .
-"""
+"""Partition refinement, supports supp(π) and candidate parent pools Pa⋆(π) from M."""
 
 from __future__ import annotations
 
@@ -16,11 +11,7 @@ from coarse.types import Block
 
 
 def _split_once(part: Block, M: np.ndarray) -> tuple[Block, Block] | None:
-    """Single iteration of partition refinement algorithm for a single block.
-
-    Picks u = min(part) as the deterministic tie-break — partition is unique regardless of the choice.
-    Returns (π_a, π_b) if a split occurs, else None.
-    """
+    """Split `part` by M-row equality with its smallest member; None if it doesn't split."""
     if len(part) < 2:
         return None
     u = min(part)
@@ -34,11 +25,7 @@ def _split_once(part: Block, M: np.ndarray) -> tuple[Block, Block] | None:
 
 
 def infer_partition(M: np.ndarray) -> list[Block]:
-    """Full partition refinement algorithm.
-
-    Returns the partition as a list of frozenset[int]. The list is sorted by
-    (|supp|, min) so downstream callers get a deterministic order.
-    """
+    """Row-class partition of M, sorted by (|supp|, min): a linear extension of ⊆ on supports."""
     M = np.asarray(M, dtype=bool)
     p = M.shape[0]
     if p == 0:
@@ -52,21 +39,13 @@ def infer_partition(M: np.ndarray) -> list[Block]:
             final.append(part)
         else:
             queue.extend(split)
-    # Compute the topological order as linear extension of the support cardinality read off M.
-    # Every downstream list (supports, candidate pools, τ) inherits this order.
     return sorted(final, key=lambda b: (int(M[min(b), :].sum()), min(b)))
 
 
 def compute_supports(
     M: np.ndarray, partition: list[Block]
 ) -> dict[Block, frozenset[int]]:
-    """Compute supp(π) = {e : M[v, e] == 1} for any v ∈ π.
-
-    The choice of v is well-defined because all rows of M restricted to π are
-    identical by construction. We pick min(π).
-
-    Explicitly builds the set to test support inclusion for candidate parents pool.
-    """
+    """supp(π) = {e : M[v, e]} for any v ∈ π (rows within a block are equal)."""
     M = np.asarray(M, dtype=bool)
     return {
         block: frozenset(int(e) for e in np.flatnonzero(M[min(block), :]))
@@ -77,11 +56,7 @@ def compute_supports(
 def compute_candidate_pools(
     supports: Mapping[Block, frozenset[int]],
 ) -> dict[Block, list[Block]]:
-    """Corollary 1 (p. 12) — Pa⋆(π) = {π' ∈ Π \\ {π} : supp(π') ⊆ supp(π)}.
-
-    Distinct partition blocks have distinct support, so on real inputs ⊆ and ⊊ coincide.
-    Each pool inherits the order of `supports`, i.e. the `infer_partition` order.
-    """
+    """Pa⋆(π) = {π' ≠ π : supp(π') ⊆ supp(π)}, in the order of `supports`."""
     blocks = list(supports.keys())
     pools: dict[Block, list[Block]] = {}
     for pi in blocks:

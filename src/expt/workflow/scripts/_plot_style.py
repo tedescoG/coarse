@@ -1,6 +1,5 @@
-"""Shared figure style for every synthetic-experiment plot script: palettes (Okabe–Ito for
-methods, mako for every other hue), labels and the log-axis tick policy.
-"""
+"""Figure style shared by the synthetic-experiment plots: Okabe–Ito for methods, mako for
+other hues, axis labels and log-axis ticks."""
 
 from __future__ import annotations
 
@@ -19,11 +18,9 @@ from matplotlib.ticker import (
     NullLocator,
 )
 
-# --- colours ---------------------------------------------------------------------------
 OKABE_ITO = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000"]
 
-# --- methods ---------------------------------------------------------------------------
-# evaluate.py labels every oracle run "<method>-oracle"; figures show the thesis names.
+# evaluate.py labels → display names.
 METHOD_DISPLAY = {
     "COARSE": "COARSE",
     "COARSE-oracle": "COARSE",
@@ -37,7 +34,6 @@ METHOD_COLOR = {
 }
 METHOD_MARKER = dict(zip(METHOD_ORDER, ["o", "s", "^", "v"]))
 
-# --- columns ---------------------------------------------------------------------------
 COLUMN_LABEL = {
     "samp_size": "sample size (n)",
     "num_nodes": "nodes",
@@ -58,9 +54,7 @@ def label(column: str) -> str:
 
 
 def apply_style() -> None:
-    """Seaborn paper context at the suite's font scale, leaving matplotlib's default
-    sans-serif text and default mathtext for the 10^k ticks. No usetex: must render
-    without TeX."""
+    """Seaborn paper style; no TeX needed."""
     sns.set_theme(style="ticks", context="paper", font_scale=2.3, palette=OKABE_ITO)
 
 
@@ -78,8 +72,7 @@ def hue_markers(column: str, levels: list):
 
 
 def display_methods(df: pd.DataFrame) -> pd.DataFrame:
-    """Map evaluate.py method labels to display names; unknown labels are an error so a
-    new method cannot silently vanish from a figure."""
+    """Map method labels to display names; unknown labels raise."""
     unknown = set(df["method"]) - set(METHOD_DISPLAY)
     if unknown:
         raise ValueError(f"method labels without a display name: {sorted(unknown)}")
@@ -91,11 +84,7 @@ def method_order(levels) -> list:
 
 
 def format_axis(axis, column: str, values=None) -> None:
-    """Tick policy per column on a log axis.
-    samp_size / runtime_sec: decades only (10^k), minor ticks unlabeled, limits widened
-      to the enclosing decades when fewer than two decade ticks would show.
-    num_nodes: ticks at the grid values, plain integers, no minor ticks.
-    """
+    """Log-axis ticks: `num_nodes` at the grid values, anything else at decades only."""
     if column == "num_nodes":
         if values is None:
             raise ValueError("num_nodes axis needs the grid values")
@@ -104,17 +93,14 @@ def format_axis(axis, column: str, values=None) -> None:
         axis.set_minor_locator(NullLocator())
         axis.set_minor_formatter(NullFormatter())
         return
-    # Decades come from the data, not the padded view: the few percent of margin past
-    # the last point would otherwise pull in a whole empty decade (n=1000 -> 10^4).
+    # Decades from the data, not the padded view, so no empty decade is added.
     lo, hi = axis.get_data_interval()
     if not (np.isfinite(lo) and np.isfinite(hi) and lo > 0 and hi > 0):
         lo, hi = axis.get_view_interval()
     lo_dec, hi_dec = math.floor(math.log10(lo)), math.ceil(math.log10(hi))
     if hi_dec - lo_dec < 1:
         hi_dec = lo_dec + 1
-    # Widen only outward, and against the *view* interval, not the data: a grid whose
-    # endpoint is a power of ten (n=1000) would otherwise lose its autoscale margin and
-    # leave the last marker half-clipped on the spine.
+    # Widen only outward from the view, keeping the autoscale margin.
     vlo, vhi = axis.get_view_interval()
     set_lim = axis.axes.set_xlim if axis.axis_name == "x" else axis.axes.set_ylim
     set_lim(min(vlo, 10.0**lo_dec), max(vhi, 10.0**hi_dec))
@@ -124,14 +110,13 @@ def format_axis(axis, column: str, values=None) -> None:
     axis.set_minor_formatter(NullFormatter())
 
 
-# Every line figure in the suite draws the median across seeds with a bootstrap CI band.
+# Median across seeds with a bootstrap CI band.
 LINE_KWARGS = dict(dashes=True, estimator="median", errorbar="ci", linewidth=2.0, markersize=8)
 
 
 def style_axes(ax, x, y, *, values=None, xlabel=True, ylabel=True) -> None:
-    """Scales, tick policy, [0, 1] limits and axis labels for one panel, keyed by column
-    name. `values` is the x grid, required when x is num_nodes. Pass xlabel/ylabel False on
-    a facet whose label belongs to the edge of the grid rather than to the panel."""
+    """Scales, ticks, [0, 1] limits and labels of one panel. `values` is the x grid (needed
+    for num_nodes)."""
     if x in ("samp_size", "num_nodes"):
         ax.set_xscale("log")
         format_axis(ax.xaxis, x, values=values)
@@ -145,31 +130,21 @@ def style_axes(ax, x, y, *, values=None, xlabel=True, ylabel=True) -> None:
 
 
 def place_legend(target, title: str | None) -> None:
-    """Single panel (an Axes): inside the axes, in whichever corner is emptiest. Grid (a
-    seaborn FacetGrid): in the right margin, where no panel can be covered. The Axes branch
-    rebuilds the legend from the axes' labelled artists, discarding any legend already
-    built with custom handles."""
+    """Inside a single Axes (emptiest corner); in the right margin of a FacetGrid."""
     if isinstance(target, sns.axisgrid.Grid):
         sns.move_legend(target, "center left", bbox_to_anchor=(1.0, 0.5), title=title, frameon=False)
     else:
-        # loc="best" picks the emptiest corner; the translucent box keeps curves visible.
         target.legend(title=title, loc="best", frameon=True, framealpha=0.6, facecolor="white")
 
 
 def finish(fig, path) -> None:
-    """Save and close. The bbox settings are arguments rather than rcParams so they hold
-    even if the caller never ran apply_style(); every figure in the suite saves here, so
-    this is the one place that decides them. `tight` is what keeps a legend in a grid's
-    right margin inside the page."""
+    """Save (tight bbox) and close."""
     fig.savefig(path, bbox_inches="tight", pad_inches=0.03)
     plt.close(fig)
 
 
 def line_panel(sub, *, x, y, hue, out_path, hue_order=None) -> None:
-    """One 6.4×4.8 in line panel: median over seeds with CI band, styled by column name
-    (scales, tick policy, [0,1] limits, labels, palette, markers, inset legend), saved to
-    out_path. Every single-panel figure in the suite goes through here, so the panels are
-    identical by construction rather than by three copies of the same block."""
+    """One styled line panel saved to `out_path`."""
     levels = sub[hue].unique()
     if hue_order is not None:
         order = list(hue_order)
@@ -177,8 +152,6 @@ def line_panel(sub, *, x, y, hue, out_path, hue_order=None) -> None:
         order = method_order(levels)
     else:
         order = sorted(levels)
-    # Checked before the cast, not after: pandas 4 will raise on values outside `categories`
-    # instead of silently turning them into NaN, so the membership test must come first.
     outside = set(levels) - set(order)
     if outside:
         raise ValueError(f"{hue} values outside hue_order={order}: {sorted(outside)}")

@@ -37,29 +37,22 @@ build-backend = "hatchling.build"
 packages = ["src/coarse"]
 
 [dependency-groups]
-# Minimal set to run the test suite (`uv sync --group test`).
-# sempler + scikit-learn are used only by one end-to-end test
-# (test_intervention_sempler), not by the coarse package itself.
-test = [
-    "pytest>=8.3.4",
-    "sempler>=0.2.14",
-    "scikit-learn>=1.6.1",
-]
-# Everything needed to reproduce the Snakemake experiments (`uv sync --group expt`).
 expt = [
     "causalchamber>=0.2.8",
     "causaldag>=0.1a163",
+    "conditional-independence>=0.1a6",
     "gies>=0.0.3",
     "gnies>=0.3.3",
     "matplotlib>=3.9",
     "pandas>=2.2",
+    "repare @ git+https://github.com/Alex-Markham/repare@83ce7f4a42b556ae661a0f2f6da646d933458aeb",
+    "scikit-learn>=1.6.1",
     "seaborn>=0.13.2",
     "sempler>=0.2.14",
     "snakefmt>=0.11.1",
     "snakemake>=9.10.1",
 ]
-# Default group for maintainers — installs both of the above.
 dev = [
-    { include-group = "test" },
+    "pytest>=8.3.4",
     { include-group = "expt" },
 ]

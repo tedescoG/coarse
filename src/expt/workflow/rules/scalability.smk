@@ -1,7 +1,4 @@
-# Scalability (p × n) for COARSE: er, ivn 5, density 0.2, p ∈ SCAL_NODES, n ∈ SCAL_SAMP.
-# n ≤ p cells are dropped (n = 100 only for p < 100). The p = 10 column is densities.smk's
-# (er, ivn 5, density 0.2) cells. A p=500, n=100000
-# dataset is 2.4 GB on disk and in memory during fit, so keep --cores modest at the top.
+# Scalability (p × n) for COARSE: er, ivn 5, density 0.2, n > p.
 SCAL_STEMS = ["ari_samp", "fscore_samp", "time_samp", "time_nodes"]
 SCAL_DIR = RESULTS + "scalability/coarse/"
 

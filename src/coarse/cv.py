@@ -1,23 +1,6 @@
-"""K-fold cross-validated COARSE class.
-
-K-fold cross-validation for the partition test threshold α in COARSE.
-
-For each α ∈ alpha_grid, for each fold k ∈ {1..K}:
-  1. Fit COARSE on the (-k) train data at α → (partition, parent_sets).
-  2. Center the train fold with its own per-env mean, build per-env Σ̂ via
-     `compute_env_stats`, and extract (B, Σ) per (env, block) via the shared
-     Schur-complement helper from `scoring.py`.
-  3. Center the test fold with the *train* per-env mean.
-  4. Sum log N(X_test_block | X_test_parents @ B^T, Σ) over (env, block).
-
-Aggregate L_CV(α) = Σ_k L^{(k)}(α). Pick α̂ = argmax; refit COARSE on the full
-data at α̂. Forward COARSE attributes onto the COARSECV instance so downstream
-consumers that read `dag`, `score`, `fit_runtime_sec`, etc. work unchanged.
-
-As both block size and covariance are not constant across alphas,
-the Gaussian log-likelihood retains the trace term and the
-``|block|·log(2π)`` constant.
-"""
+"""K-fold CV of COARSE's test threshold α: fit on the train folds, score the held-out Gaussian
+log-likelihood (test folds centered with the train means), refit at the best α. The full
+likelihood (with the log 2π and trace terms) is kept since blocks change across α."""
 
 from __future__ import annotations
 
@@ -37,9 +20,7 @@ from coarse.scoring import (
 from coarse.types import EnvKey
 
 DEFAULT_ALPHA_GRID: tuple[float, ...] = (1e-4, 1e-3, 1e-2, 0.05, 0.1)
-# Note: α is a p-value cutoff and its effect-size scales as 1/√n, so the α
-# validated at n_train is applied at a stricter cutoff when refit on n.
-# Larger K keeps n_train close to n and that mismatch small.
+# Large K keeps n_train close to n, where the chosen α is applied.
 DEFAULT_N_FOLDS: int = 10
 
 
@@ -48,16 +29,7 @@ def _kfold_split_env(
     n_folds: int,
     rng: np.random.Generator,
 ) -> Iterator[tuple[dict[EnvKey, np.ndarray], dict[EnvKey, np.ndarray]]]:
-    """Per-environment K-fold split, yielding one ``(train, test)`` dict pair
-    per fold.
-
-    Each env's rows are permuted independently and cut into ``n_folds`` chunks
-    with ``np.array_split``.
-
-    Raises ``ValueError`` if any env has ``n_e < n_folds``.
-
-    Folds are materialised lazily so only one is held in memory at a time.
-    """
+    """Per-env K-fold split, yielding `(train, test)` dicts one fold at a time."""
     chunks: dict[EnvKey, list[np.ndarray]] = {}
     for ek, X in env_arrays.items():
         n_e = X.shape[0]
@@ -88,23 +60,7 @@ def _heldout_block_log_lik(
     X_test_block_centered: np.ndarray,
     X_test_parents_centered: np.ndarray,
 ) -> float:
-    """Held-out Gaussian log-density for one (env, block) cell.
-
-    Computes
-        log N(X_test_block | X_test_parents @ B_train.T, Sigma_train)
-            = -n_test/2 · [ r_j · log(2π) + log|Σ| + tr(Σ^{-1} · Rᵀ R / n_test) ]
-            = -1/2 · [ n_test · r_j · log(2π) + n_test · log|Σ| + tr(Σ^{-1} Rᵀ R) ]
-
-    where ``R = X_test_block_centered − X_test_parents_centered @ B_train.T``
-    are the test-fold residuals under the train-fit parameters.
-
-    The implementation evaluates ``tr(Σ^{-1} Rᵀ R) = ⟨R, Σ^{-1} R⟩`` via one
-    Cholesky solve plus an einsum contraction; ``Σ^{-1}`` is never formed.
-
-    Returns ``-inf`` when:
-      - the test fold is empty,
-      - ``Sigma_train`` is non-PD (Cholesky failure or ``slogdet`` sign ≤ 0).
-    """
+    """`Σ_i log N(x_i | B pa_i, Σ)` over the test rows; -inf if empty or Σ is not PD."""
     n_test = X_test_block_centered.shape[0]
     r_j = block_idx.size
     if n_test <= 0:
@@ -124,8 +80,7 @@ def _heldout_block_log_lik(
     if sign <= 0 or not np.isfinite(logdet):
         return -np.inf
 
-    # tr(Σ^{-1} Rᵀ R) without forming Σ^{-1}: cho_solve gives Z = Σ^{-1} Rᵀ,
-    # then ⟨R, Zᵀ⟩ = Σ_{i,p} R[i,p] · Z[p,i] = tr(R Σ^{-1} Rᵀ).
+    # tr(R Σ⁻¹ Rᵀ) without forming Σ⁻¹.
     Z = sla.cho_solve((c, low), R.T, check_finite=False)
     trace_term = float(np.einsum("ij,ji->", R, Z))
 
@@ -142,14 +97,8 @@ def _evaluate_fold(
     baseline_key: EnvKey,
     rng: np.random.Generator,
 ) -> float:
-    """One (α, fold) cell of the CV loop.
-
-    Fits COARSE on the train fold at ``alpha``, then sums the held-out
-    Gaussian log-likelihood across (env, block). Returns ``-inf`` if any
-    block evaluation fails (singular train Σ_PaPa or non-PD train residual
-    Σ, i.e. the train fold is too small for |block| + |Pa|, or an empty test
-    fold).
-    """
+    """Held-out log-likelihood of COARSE fit on `train_dict` at `alpha`; -inf if any block
+    fails."""
     model = COARSE(rng=rng).fit(
         train_dict,
         alpha=alpha,
@@ -158,7 +107,7 @@ def _evaluate_fold(
         baseline_key=baseline_key,
     )
 
-    # Centering using train means → applied to both train and test.
+    # Both folds centered with the train means.
     env_means = {ek: v.mean(axis=0, keepdims=True) for ek, v in train_dict.items()}
     centered_train = {ek: v - env_means[ek] for ek, v in train_dict.items()}
     env_stats_train = compute_env_stats(centered_train)
@@ -197,24 +146,9 @@ def _evaluate_fold(
 
 
 class COARSECV:
-    """K-fold CV wrapper around COARSE that selects α from a grid.
-
-    Usage mirrors ``COARSE`` (sklearn-style ``.fit(data_dict) -> self``).
-    After ``fit``, the instance exposes:
-
-      - ``alpha_grid``                      tuple of evaluated α's
-      - ``n_folds``                         int
-      - ``cv_per_fold_log_lik``             ndarray (|A|, K), held-out log-lik
-      - ``cv_log_lik``                      dict α → float (sum across folds)
-      - ``best_alpha``                      float, argmax of cv_log_lik
-      - ``final_model``                     COARSE refit on the full data at α̂
-      - ``cv_runtime_sec``                  float, total CV loop wall time
-      - ``dag``, ``score``, ``partition``, ``parent_sets``, ``M``,
-        ``env_order``, ``supports``, ``candidate_pools``, ``linear_extension_``,
-        ``num_features``, ``fit_runtime_sec``, ``fit_metadata``,
-        ``expand_coarsened_dag`` — forwarded from ``final_model`` so any
-        consumer that reads a COARSE works on a COARSECV unchanged.
-    """
+    """COARSE with α chosen by K-fold CV. After `fit`: `best_alpha`, `cv_log_lik` (α → sum
+    over folds), `cv_per_fold_log_lik`, `final_model`, `cv_runtime_sec`, plus every COARSE
+    attribute of `final_model`."""
 
     def __init__(self, rng: np.random.Generator | None = None) -> None:
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -244,9 +178,7 @@ class COARSECV:
             dtype=object,
         ).reshape(len(alpha_grid), n_folds)
 
-        # Folds outer, α inner: each fold's arrays are built once and dropped
-        # before the next; the (α, fold) RNG grid above keeps results
-        # independent of this loop order.
+        # One fold in memory at a time; the (α, fold) RNG grid makes loop order irrelevant.
         per_fold = np.full((len(alpha_grid), n_folds), -np.inf, dtype=float)
         for k, (tr, te) in enumerate(
             _kfold_split_env(env_arrays, n_folds, splitter_rng)
@@ -271,7 +203,7 @@ class COARSECV:
                 "(n_e per env, |block| relative to test-fold size)"
             )
 
-        # tiebreak picks the smaller alpha
+        # Ties go to the smaller α.
         best_i = int(
             max(
                 (i for i in range(len(alpha_grid)) if np.isfinite(sums[i])),
@@ -326,7 +258,7 @@ class COARSECV:
 
 
 def cv_coarse(data_dict: dict[EnvKey, Any], **kwargs: Any) -> COARSECV:
-    """Functional facade for experiments — ``COARSECV().fit(data_dict, **kwargs)``."""
+    """`COARSECV().fit(data_dict, **kwargs)`."""
     return COARSECV().fit(data_dict, **kwargs)
 
 

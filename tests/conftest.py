@@ -1,8 +1,12 @@
-"""Shared fixtures for the coarse test suite.
-"""
+"""Shared test helpers; also puts the experiment scripts on sys.path."""
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "expt" / "workflow" / "scripts"))
 
 
 def sample_chain_dataset(
@@ -10,12 +14,8 @@ def sample_chain_dataset(
     rng: np.random.Generator,
     shift_targets: tuple[int, ...] = (),
 ) -> np.ndarray:
-    """Sample from a linear-Gaussian chain DAG:
-        A = {v0, v1}  →  B = {v2, v3}  →  C = {v4, v5}
-
-    ``shift_targets`` lists variable indices that receive a soft mean shift of
-    +2.
-    """
+    """Linear-Gaussian chain {v0, v1} → {v2, v3} → {v4, v5}; `shift_targets` get a +2 mean
+    shift."""
     shift = np.zeros(6)
     for i in shift_targets:
         shift[i] = 2.0

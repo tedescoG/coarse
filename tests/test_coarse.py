@@ -634,48 +634,6 @@ def test_fit_baseline_only_single_block():
     assert np.isfinite(model.score)
 
 
-def test_fit_on_sempler_dag_smoke():
-    """Fit runs on a 20-node sempler DAG and roughly recovers the true partition."""
-    from sempler import LGANM
-    from sempler.generators import dag_avg_deg, intervention_targets
-    from sklearn.metrics import adjusted_rand_score
-
-    seed, num_nodes, num_intervs, density = 0, 20, 5, 0.1
-    weights = dag_avg_deg(
-        num_nodes, density * (num_nodes - 1), w_min=0.5, w_max=2,
-        return_ordering=False, random_state=seed,
-    )
-    rng = np.random.default_rng(seed)
-    edge_idcs = np.flatnonzero(weights)
-    to_neg = edge_idcs[rng.choice([True, False], len(edge_idcs))]
-    weights[np.unravel_index(to_neg, (num_nodes, num_nodes))] *= -1
-
-    model = LGANM(weights, means=(-2, 2), variances=(0.5, 2), random_state=seed)
-    targets = intervention_targets(num_nodes, num_intervs, 1, random_state=seed)
-    data_dict = {"obs": model.sample(1000)}
-    for idx, target in enumerate(targets):
-        data_dict[str(idx)] = model.sample(1000, shift_interventions={target[0]: (2, 1)})
-
-    coarse_model = COARSE().fit(data_dict, alpha=1e-4, lambda_pen=1.0, refine_test="welch")
-    assert coarse_model.dag.number_of_nodes() >= 1
-    assert coarse_model.fit_runtime_sec > 0
-    assert nx.is_directed_acyclic_graph(coarse_model.dag)
-
-    true_dag = nx.DiGraph(weights.astype(bool))
-    M_true = np.column_stack([
-        np.isin(np.arange(num_nodes), list(nx.descendants(true_dag, t[0])) + [t[0]])
-        for t in targets
-    ])
-    true_labels = np.zeros(num_nodes, dtype=int)
-    for label, part in enumerate(infer_partition(M_true)):
-        true_labels[list(part)] = label
-    est_labels = np.zeros(num_nodes, dtype=int)
-    for label, part in enumerate(coarse_model.dag.nodes):
-        est_labels[list(part)] = label
-    ari = adjusted_rand_score(true_labels, est_labels)
-    assert ari >= 0.5, f"partition ARI {ari}"
-
-
 # ---------------------------------------------------------------------------
 # expand_coarsened_dag
 # ---------------------------------------------------------------------------

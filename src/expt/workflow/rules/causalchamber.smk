@@ -1,38 +1,15 @@
-"""CausalChamber experiment — COARSE / RePaRe / GIES / GnIES / UT-IGSP on the
-light tunnel.
-
-Superset of `repare-0.2.0/src/expt/workflow/rules/causalchamber.smk`: same
-dataset, ground truth and baseline calls, plus COARSE, and every method run on
-both intervention regimes (grouped: obs + rgb + pol; ungrouped: obs +
-single-variable experiments). One α grid (`ALPHAS`) is shared by every
-α-tuned method: COARSE's CV / oracle, RePaRe (× β) and UT-IGSP (× α_inv).
-Edge metrics are taken against the true coarse graph G/Π; the atomic baselines are
-projected onto Π first (no ARI for them).
-No model pickles are persisted — per-fit outputs are metrics.csv /
-*_params.json / *_dag.png, and the aggregator works from JSON without
-importing `repare`.
-
-Per-method directory contract (read by causalchamber_aggregate.py):
-    results/causalchamber/<method>_<mode>/{metrics.csv, score_params.json, score_dag.png}
-    + {oracle_params.json, oracle_dag.png} for methods with a hyperparameter grid.
-"""
-
-from snakemake.io import directory
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
+# Causal Chamber light tunnel: COARSE and RePaRe on the grouped and ungrouped regimes, GIES,
+# GnIES and UT-IGSP on the ungrouped one. Score rows never use ground truth; oracle rows take
+# the best grid cell. Per method: results/causalchamber/<method>_<mode>/.
 
 ALPHAS = [1e-4, 1e-3, 1e-2, 0.1]
 BETAS = [1e-4, 1e-3, 1e-2, 0.1]
-# λ is never swept: BIC is not comparable across λ, so COARSE runs at the
-# standard BIC penalty and only α is tuned (score: 10-fold CV; oracle: best
-# grid cell against ground truth) — the same one-threshold design as RePaRe.
+# λ is not tuned: BIC is not comparable across λ.
 FIXED_LAMBDA = 1.0
 CV_N_FOLDS = 10
-# Stage-1 test: Gaussian mean + variance LRT, the test RePaRe's `assume="gaussian"`
-# path runs (its `refine_test="ks"` argument is inert under that assumption).
+# Gaussian mean + variance LRT.
 COARSE_REFINE_TEST = "gaussian_lrt"
-# GnIES: per-env row cap inherited from RePaRe's experiment. Override for a
-# quick wiring check with `--config gnies_max_rows=200` (the rule re-runs when
-# the param changes, so the real run is not contaminated).
-GNIES_MAX_ROWS = int(config.get("gnies_max_rows", 2000))
 
 DATASET = "lt_interventions_standard_v1"
 CHAMBER = "lt"
@@ -46,18 +23,25 @@ PREP_FILES = {
     "partition": BASE + "preprocessed/partition_parts.pkl",
     "grouptargets": BASE + "preprocessed/grouptargets.pkl",
     "truegraph": BASE + "preprocessed/truegraph.pkl",
-    "truelabels": BASE + "preprocessed/truelabels.pkl",
     "truedagfull": BASE + "preprocessed/truedagfull.pkl",
     "nametoidx": BASE + "preprocessed/nametoidx.pkl",
     "singleenvlabels": BASE + "preprocessed/singleenvlabels.pkl",
-    "singleenvtargets": BASE + "preprocessed/singleenvtargets.pkl",
-    "singleenvdata": BASE + "preprocessed/singleenvdata.pkl",
 }
 
-# Imported by every fit script; an explicit input because Snakemake hashes only `script:`.
-CC_COMMON = "workflow/scripts/_causalchamber_common.py"
+# Snakemake hashes only `script:`, so imported helpers are explicit inputs.
+CC_COMMON = [
+    "workflow/scripts/_causalchamber_common.py",
+    "workflow/scripts/_common.py",
+]
 
 CC_MODES = ["grouped", "ungrouped"]
+CC_METHOD_MODES = {
+    "coarse": CC_MODES,
+    "repare": CC_MODES,
+    "gies": ["ungrouped"],
+    "gnies": ["ungrouped"],
+    "utigsp": ["ungrouped"],
+}
 # Methods with a hyperparameter grid emit an oracle row; GIES / GnIES do not.
 CC_METHOD_SELECTIONS = {
     "coarse": ["score", "oracle"],
@@ -68,11 +52,11 @@ CC_METHOD_SELECTIONS = {
 }
 
 
-def cc_outputs_for(method, selections):
-    out = {"metrics_csv": BASE + method + "_{mode}/metrics.csv"}
+def cc_outputs_for(method, selections, mode="{mode}"):
+    out = {"metrics_csv": BASE + method + f"_{mode}/metrics.csv"}
     for sel in selections:
-        out[f"{sel}_dag"] = BASE + method + "_{mode}/" + sel + "_dag.png"
-        out[f"{sel}_params"] = BASE + method + "_{mode}/" + sel + "_params.json"
+        out[f"{sel}_dag"] = BASE + method + f"_{mode}/" + sel + "_dag.png"
+        out[f"{sel}_params"] = BASE + method + f"_{mode}/" + sel + "_params.json"
     return out
 
 
@@ -86,12 +70,6 @@ rule causalchamber_prepare:
         root="data/causalchamber",
     script:
         "../scripts/causalchamber_prepare.py"
-
-
-# ---------------------------------------------------------------------------
-# COARSE — α grid at λ=1: oracle row = best cell vs ground truth; score row =
-# one COARSECV fit (α̂ by K-fold held-out likelihood over the same grid).
-# ---------------------------------------------------------------------------
 
 
 rule causalchamber_coarse:
@@ -110,11 +88,6 @@ rule causalchamber_coarse:
         "../scripts/causalchamber_coarse.py"
 
 
-# ---------------------------------------------------------------------------
-# RePaRe — α × β grid, native GnIES-on-expanded score selection.
-# ---------------------------------------------------------------------------
-
-
 rule causalchamber_repare:
     input:
         **PREP_FILES,
@@ -129,20 +102,12 @@ rule causalchamber_repare:
         "../scripts/causalchamber_repare.py"
 
 
-# ---------------------------------------------------------------------------
-# Baselines from RePaRe's experiment — GIES (known targets), GnIES and UT-IGSP
-# (unknown targets). Calls are identical to repare-0.2.0's scripts.
-# ---------------------------------------------------------------------------
-
-
 rule causalchamber_gies:
     input:
         **PREP_FILES,
         common=CC_COMMON,
     output:
-        **cc_outputs_for("gies", CC_METHOD_SELECTIONS["gies"]),
-    params:
-        mode="{mode}",
+        **cc_outputs_for("gies", CC_METHOD_SELECTIONS["gies"], "ungrouped"),
     script:
         "../scripts/causalchamber_gies.py"
 
@@ -152,10 +117,7 @@ rule causalchamber_gnies:
         **PREP_FILES,
         common=CC_COMMON,
     output:
-        **cc_outputs_for("gnies", CC_METHOD_SELECTIONS["gnies"]),
-    params:
-        mode="{mode}",
-        max_rows=GNIES_MAX_ROWS,
+        **cc_outputs_for("gnies", CC_METHOD_SELECTIONS["gnies"], "ungrouped"),
     script:
         "../scripts/causalchamber_gnies.py"
 
@@ -164,21 +126,14 @@ rule causalchamber_utigsp:
     input:
         **PREP_FILES,
         common=CC_COMMON,
+        ut_igsp="workflow/scripts/ut_igsp.py",
     output:
-        **cc_outputs_for("utigsp", CC_METHOD_SELECTIONS["utigsp"]),
+        **cc_outputs_for("utigsp", CC_METHOD_SELECTIONS["utigsp"], "ungrouped"),
     params:
-        mode="{mode}",
         alpha_ci=ALPHAS,
         alpha_inv=ALPHAS,
     script:
         "../scripts/causalchamber_utigsp.py"
-
-
-# ---------------------------------------------------------------------------
-# Aggregator — produces the headline artifacts. Input keys follow the
-# `{method}_{mode}_metrics` / `{method}_{mode}_{selection}_params` naming the
-# aggregator resolves via getattr(snakemake.input, ...).
-# ---------------------------------------------------------------------------
 
 
 def cc_aggregate_inputs():
@@ -187,8 +142,7 @@ def cc_aggregate_inputs():
         "nametoidx": PREP_FILES["nametoidx"],
     }
     for method, selections in CC_METHOD_SELECTIONS.items():
-        for mode in CC_MODES:
-            inputs[f"{method}_{mode}_metrics"] = BASE + f"{method}_{mode}/metrics.csv"
+        for mode in CC_METHOD_MODES[method]:
             for sel in selections:
                 inputs[f"{method}_{mode}_{sel}_params"] = (
                     BASE + f"{method}_{mode}/{sel}_params.json"
@@ -199,28 +153,46 @@ def cc_aggregate_inputs():
 rule causalchamber_aggregate:
     input:
         **cc_aggregate_inputs(),
+        common=CC_COMMON,
     output:
-        grid_metrics=BASE + "grid_metrics.csv",
         dag=BASE + "dag.png",
-        grid_dir=directory(BASE + "grid_runs"),
         summary="results/causalchamber_summary.csv",
         dag_summary="results/causalchamber_dags.txt",
     params:
         method_selections=CC_METHOD_SELECTIONS,
-        modes=CC_MODES,
+        method_modes=CC_METHOD_MODES,
     script:
         "../scripts/causalchamber_aggregate.py"
 
 
-# ---------------------------------------------------------------------------
-# Top-level entry point.
-# ---------------------------------------------------------------------------
+rule causalchamber_variable:
+    input:
+        **{
+            f"{method}_{sel}_params": BASE + f"{method}_ungrouped/{sel}_params.json"
+            for method, selections in CC_METHOD_SELECTIONS.items()
+            for sel in selections
+        },
+        truegraph=PREP_FILES["truegraph"],
+        nametoidx=PREP_FILES["nametoidx"],
+        partition=PREP_FILES["partition"],
+        truedagfull=PREP_FILES["truedagfull"],
+        singleenvlabels=PREP_FILES["singleenvlabels"],
+        common=CC_COMMON,
+    output:
+        summary="results/causalchamber_variable_summary.csv",
+    params:
+        method_selections=CC_METHOD_SELECTIONS,
+        draws=1000,
+        seed=0,
+    script:
+        "../scripts/causalchamber_variable.py"
+
 
 cc_outputs = [
     "results/causalchamber/dag.png",
-    "results/causalchamber/grid_metrics.csv",
     "results/causalchamber_summary.csv",
     "results/causalchamber_dags.txt",
+    "results/causalchamber_variable_summary.csv",
 ]
 
 

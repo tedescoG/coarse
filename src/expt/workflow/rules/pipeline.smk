@@ -1,4 +1,4 @@
-# generate → fit → evaluate for full-pipeline COARSE (partition discovery + scoring).
+# generate → fit → evaluate for COARSE.
 
 
 rule generate:
@@ -26,7 +26,6 @@ rule fit_coarse:
         lambda_pen=LAMBDA_PEN,
         refine_test=REFINE_TEST,
         intervention_type=INTERVENTION_TYPE,
-        # Kept so existing cells' params provenance still matches.
         k=None,
     script:
         "../scripts/fit.py"

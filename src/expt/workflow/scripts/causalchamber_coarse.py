@@ -1,25 +1,8 @@
 #!/usr/bin/env python3
-"""Run COARSE on the CausalChamber light tunnel: an α grid at fixed λ.
-
-Two cells per intervention regime, mirroring RePaRe's score / oracle rows:
-
-    oracle → plain `COARSE().fit` at every α in `snakemake.params.alphas`
-             (λ = `snakemake.params.lambda_pen`, never swept); the row is the
-             grid cell that scores best against ground truth
-             (`select_oracle_row`: max ARI, F1, precision, then BIC).
-    score  → one `COARSECV` fit at the same λ: α̂ is chosen by K-fold held-out
-             log-likelihood over the same α grid and the model refit at α̂.
-             Ground truth never enters. Reported `fit_time` is the **final
-             refit only** (`model.fit_runtime_sec`) — RePaRe reports the
-             selected grid cell's single fit, not its search — and the whole
-             CV loop goes to `search_runtime_sec`.
-
-Stage-1 test is `snakemake.params.refine_test` (the rule passes
-`"gaussian_lrt"`, the mean + variance LRT that RePaRe's `assume="gaussian"`
-path runs).
-
-`model.score` (partition BIC, higher is better) is not comparable across methods.
-"""
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
+"""COARSE on the Causal Chamber: an α grid (oracle row = best cell vs ground truth) and one
+COARSECV fit (score row). `fit_time` is the final refit; the search goes to
+`search_runtime_sec`."""
 
 import json
 import pickle
@@ -31,9 +14,8 @@ from sklearn.metrics import adjusted_rand_score
 
 from coarse import COARSE
 from coarse.cv import COARSECV
-from _common import partition_labels
+from _common import partition_edge_metrics, partition_labels
 from _causalchamber_common import (
-    all_edge_metrics,
     build_block_data_dict,
     ground_truth_partition,
     labeled_summary,
@@ -44,19 +26,18 @@ from _causalchamber_common import (
 )
 
 
-def _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph, true_blocks):
+def _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph):
     est_labels = partition_labels(model.dag.nodes, len(true_labels))
     return {
+        "metric_type": "partition",
         "alpha": float(alpha),
         "lambda": float(lambda_pen),
-        "second_hp": float(lambda_pen),
-        "second_hp_name": "lambda",
         "ari": float(adjusted_rand_score(true_labels, est_labels)),
         "score": float(model.score),
         "fit_time": float(fit_time),
         "num_parts": int(model.dag.number_of_nodes()),
         "num_edges": int(model.dag.number_of_edges()),
-        **all_edge_metrics(model.dag, true_graph, true_blocks),
+        **partition_edge_metrics(model.dag, true_graph),
     }
 
 
@@ -86,9 +67,8 @@ def main():
 
     targets = select_targets(mode, group_targets, single_env_labels, name_to_idx)
     data_dict = build_block_data_dict(blocks, targets)
-    true_blocks, true_labels = ground_truth_partition(targets, partition_parts, true_dag_full)
+    _, true_labels = ground_truth_partition(targets, partition_parts, true_dag_full)
 
-    # --- α grid at fixed λ → metrics.csv + oracle row ---------------------------
     records = []
     dags = {}
     for alpha in alphas:
@@ -98,7 +78,7 @@ def main():
         )
         fit_time = time.perf_counter() - start
         records.append(
-            _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph, true_blocks)
+            _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph)
         )
         dags[float(alpha)] = model.dag
 
@@ -111,7 +91,6 @@ def main():
     oracle_row = select_oracle_row(records)
     oracle_dag = dags[oracle_row["alpha"]]
 
-    # --- COARSECV at the same λ over the same α grid → score row ----------------
     cv_model = COARSECV().fit(
         data_dict,
         alpha_grid=tuple(alphas),
@@ -121,7 +100,7 @@ def main():
     )
     score_row = _row_from_model(
         cv_model, cv_model.best_alpha, lambda_pen, cv_model.fit_runtime_sec,
-        true_labels, true_graph, true_blocks,
+        true_labels, true_graph,
     )
     score_row["search_runtime_sec"] = float(cv_model.cv_runtime_sec)
     score_dag = cv_model.dag

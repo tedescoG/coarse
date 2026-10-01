@@ -1,6 +1,4 @@
-# Oracle-partition fits: COARSEOracle (plain / kPC) and RePaRe with the true partition
-# injected, on single-target data (ORACLE_DATA). noise.smk sweeps the noise wildcard; λ stays
-# a path wildcard so existing cells keep their paths (always LAMBDA_PEN).
+# Fits under the true partition: COARSEOracle (plain / kPC) and RePaRe.
 
 
 rule fit_oracle:
@@ -48,7 +46,6 @@ rule evaluate_oracle:
         mem_mb=cell_mem_mb,
     params:
         method_label=lambda w: ORACLE_LABELS[w.method],
-        # RePaRe has no penalty; the column is kept non-NaN for CSV consistency.
         lambda_pen=lambda w: float(w.lambda_pen),
     script:
         "../scripts/evaluate.py"

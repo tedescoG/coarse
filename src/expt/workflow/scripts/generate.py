@@ -1,5 +1,4 @@
-"""Synthetic dataset for one sweep cell: maps the wildcards onto ``_common.make_dataset``
-(an iSCM sampled through sempler) and writes the ``.npz``."""
+"""Synthetic iSCM dataset for one sweep cell."""
 import warnings
 
 warnings.filterwarnings(
@@ -24,9 +23,7 @@ num_nodes = int(snakemake.wildcards.num_nodes)
 num_intervs = int(snakemake.wildcards.num_intervs)
 graph = snakemake.wildcards["graph"]
 targets_size = parse_targets_per_interv(getattr(snakemake.wildcards, "targets_per_interv", None))
-# Every DATA path carries a noise segment; the default only guards ad-hoc invocations.
 noise = getattr(snakemake.wildcards, "noise", "gaussian")
-# COARSE only supports soft (shift) interventions; anything else is a misconfiguration.
 normalize_intervention_type(getattr(snakemake.params, "intervention_type", "soft"))
 
 weights, targets, data_dict = make_dataset(
@@ -34,11 +31,7 @@ weights, targets, data_dict = make_dataset(
     noise=noise,
 )
 
-# Heterogeneous target-size sweeps (e.g. ``targets_per_interv="1to5"``) produce
-# a ragged ``targets`` list — np.savez would error trying to stack them into
-# a homogeneous 2D array. Wrap in an explicit object array so each entry stays
-# its own variable-length sequence; downstream code only ever iterates, so the
-# change is invisible to consumers (and a no-op for the fixed-size case).
+# Object array: target sets can be ragged.
 np.savez(
     snakemake.output[0],
     weights=weights,

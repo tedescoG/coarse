@@ -1,6 +1,4 @@
-# Noise-family robustness under the oracle partition: COARSEOracle on Gaussian / uniform /
-# Laplace / Student-t (ν = 3, 4) iSCM noise, er, ivn 5, density 0.2 (the scalability setting, so
-# its Gaussian datasets are shared), p ∈ NOISE_NODES, n ∈ NOISE_SAMP with n > p.
+# Noise families under the true partition: COARSEOracle, er, ivn 5, density 0.2, n > p.
 NOISE_SAMP = sorted({100, 500, *SCAL_SAMP})
 NOISE_DIR = RESULTS + "noise/"
 

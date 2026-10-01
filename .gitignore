@@ -15,6 +15,7 @@
 # snakemake experiments
 /src/expt/.snakemake/
 /src/expt/results/
+/src/expt/data/
 
 # editor / OS
 .idea/

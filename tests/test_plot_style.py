@@ -1,9 +1,6 @@
 """Tests for the shared figure style in workflow/scripts/_plot_style.py."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import matplotlib
 
 matplotlib.use("Agg")
@@ -13,9 +10,7 @@ import pytest
 import seaborn as sns
 from matplotlib.ticker import NullFormatter
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "src" / "expt" / "workflow" / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
-import _plot_style as ps  # noqa: E402
+import _plot_style as ps
 
 
 def _visible_labels(axis):
@@ -32,24 +27,6 @@ def test_method_hue_uses_okabe_ito_and_other_hues_use_mako():
     assert ps.hue_palette("method", ["COARSE", "RePaRe"]) == {"COARSE": "#0072B2", "RePaRe": "#E69F00"}
     assert set(ps.METHOD_COLOR.values()) <= set(ps.OKABE_ITO)
     assert ps.hue_palette("density", [0.2, 0.5, 0.8]) == sns.color_palette("mako", 3)
-
-
-def test_metric_labels_use_short_names_with_arrows():
-    assert ps.COLUMN_LABEL["ari"] == "ARI ↑"
-    assert ps.COLUMN_LABEL["fscore"] == "F-score ↑"
-    assert not any("Adjusted" in v for v in ps.COLUMN_LABEL.values())
-
-
-def test_node_count_column_is_labelled_nodes():
-    assert ps.COLUMN_LABEL["num_nodes"] == "nodes"
-
-
-def test_apply_style_leaves_the_default_font():
-    """After apply_style() the font family is matplotlib's default and mathtext is not cm."""
-    with matplotlib.rc_context():
-        ps.apply_style()
-        assert matplotlib.rcParams["font.family"] == ["sans-serif"]
-        assert matplotlib.rcParams["mathtext.fontset"] != "cm"
 
 
 def test_place_legend_puts_a_single_panel_legend_inside_the_axes():

@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
-"""Preprocess CausalChamber light-tunnel data for the COARSE / RePaRe / baselines
-experiment.
-
-The ground-truth partition labels are computed via
-`coarse.partition.infer_partition` (Algorithm 2 in the COARSE draft) from the
-descendant masks; block contents are determined by the masks alone, and ARI is
-permutation-invariant, so the block ordering does not affect downstream
-metrics.
-"""
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
+"""Download and preprocess the Causal Chamber light-tunnel data."""
 
 import json
 import pickle
@@ -17,8 +10,6 @@ import networkx as nx
 import numpy as np
 from causalchamber.datasets import Dataset
 from causalchamber.ground_truth import main as gt
-
-from _causalchamber_common import ground_truth_partition
 
 OBS_EXPERIMENT = "uniform_reference"
 RGB_EXPERIMENTS = ["uniform_red_strong", "uniform_green_strong", "uniform_blue_strong"]
@@ -113,13 +104,9 @@ def prepare_dataset(dataset_name, root, chamber, configuration):
         (full_idx[u], full_idx[v]) for u, v in gt.edges(chamber, configuration)
     )
     true_graph = build_true_graph(partition_parts, true_dag_full)
-    _, true_labels = ground_truth_partition(group_targets, partition_parts, true_dag_full)
-
     single_env_labels = [
         label for label in DEFAULT_SINGLE_TARGET_EXPERIMENTS if label in name_to_idx
     ]
-    single_env_targets = {label: {name_to_idx[label]} for label in single_env_labels}
-    single_env_data = [blocks[label] for label in single_env_labels]
 
     return {
         "blocks": blocks,
@@ -127,12 +114,9 @@ def prepare_dataset(dataset_name, root, chamber, configuration):
         "partition_parts": partition_parts,
         "group_targets": group_targets,
         "true_graph": true_graph,
-        "true_labels": true_labels,
         "true_dag_full": true_dag_full,
         "name_to_idx": name_to_idx,
         "single_env_labels": single_env_labels,
-        "single_env_targets": single_env_targets,
-        "single_env_data": single_env_data,
     }
 
 
@@ -154,18 +138,12 @@ def main():
         pickle.dump(data["group_targets"], f)
     with open(snakemake.output.truegraph, "wb") as f:
         pickle.dump(data["true_graph"], f)
-    with open(snakemake.output.truelabels, "wb") as f:
-        pickle.dump(data["true_labels"], f)
     with open(snakemake.output.truedagfull, "wb") as f:
         pickle.dump(data["true_dag_full"], f)
     with open(snakemake.output.nametoidx, "wb") as f:
         pickle.dump(data["name_to_idx"], f)
     with open(snakemake.output.singleenvlabels, "wb") as f:
         pickle.dump(data["single_env_labels"], f)
-    with open(snakemake.output.singleenvtargets, "wb") as f:
-        pickle.dump(data["single_env_targets"], f)
-    with open(snakemake.output.singleenvdata, "wb") as f:
-        pickle.dump(data["single_env_data"], f)
 
 
 if __name__ == "__main__":

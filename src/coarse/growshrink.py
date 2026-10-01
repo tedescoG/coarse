@@ -1,4 +1,4 @@
-"""Score-based non-greed GrowShrink implementation for coarse nodes."""
+"""Score-based grow-shrink parent search for one block."""
 
 from __future__ import annotations
 
@@ -14,8 +14,7 @@ from coarse.types import Block, EnvKey
 
 
 def _shuffled(items: list[Block], rng: np.random.Generator) -> list[Block]:
-    """Return a new list with `items` in a random order. Index-based shuffle
-    so we avoid any object-dtype quirks with `rng.shuffle` on frozensets."""
+    """`items` in random order."""
     if not items:
         return []
     order = rng.permutation(len(items))
@@ -31,41 +30,14 @@ def grow_shrink(
     *,
     env_stats: dict[EnvKey, EnvStats] | None = None,
 ) -> list[Block]:
-    """Grow-Shrink algorithm: return the estimated parent set P̂a_j for a coarse node.
-
-    Parameters
-    ----------
-    block
-        The target block π_j.
-    candidate_pool
-        Z_j ⊆ Π_E \\ {π_j} — typically `Pa⋆(π_j)` from
-        `partition.compute_candidate_pools`.
-    data_dict
-        Mapping env_key → (n_e, p) ndarray. Both `block` and every candidate
-        index into the columns of these arrays. Ignored when `env_stats` is
-        provided (the cached path bypasses raw arrays entirely).
-    lambda_pen
-        BIC penalty coefficient λ. Default 1.0 matches standard BIC.
-    rng
-        Random generator for shuffling the inner-sweep iteration order.
-        Defaults to `np.random.default_rng(0)` for reproducibility.
-    env_stats
-        Per-env covariance cache from `compute_env_stats`, built from the same
-        centered arrays as `data_dict`. Built from `data_dict` if `None`.
-
-    Returns
-    -------
-    list[Block]
-        Estimated parent blocks. Semantically can be treated as a set.
-    """
+    """Parent blocks of `block` from `candidate_pool`: add, then remove, candidates while
+    the pooled BIC strictly improves, in a random order each sweep. `data_dict` (centered)
+    is ignored when `env_stats` is given."""
     if rng is None:
         rng = np.random.default_rng(0)
     if env_stats is None:
-        env_stats = compute_env_stats(data_dict) # compute statistics if nothing is passed.
+        env_stats = compute_env_stats(data_dict)
 
-    # pre-compute invariants for the loop.
-    # block_idx and S_jj are constant across all probes;
-    # idx_cache avoids re-sorting each candidate's frozenset.
     block_idx = _block_indices(block)
     idx_cache: dict[Block, np.ndarray] = {block: block_idx}
     idx_cache.update({b: _block_indices(b) for b in candidate_pool})
@@ -84,7 +56,7 @@ def grow_shrink(
     non_parents: list[Block] = list(candidate_pool)
     current_bic = _score(P)
 
-    # --- Grow phase --------------------------------------------------------
+    # Grow.
     while True:
         done = True
         for pi_k in _shuffled(non_parents, rng):
@@ -97,7 +69,7 @@ def grow_shrink(
         if done:
             break
 
-    # --- Shrink phase ------------------------------------------------------
+    # Shrink.
     while True:
         done = True
         for pi_k in _shuffled(P, rng):

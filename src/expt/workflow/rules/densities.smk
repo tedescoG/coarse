@@ -1,6 +1,4 @@
-# Densities sweep for COARSE on Gaussian single-target data: (density × n) at p = DENS_NODES
-# per graph family and ivn, n from 100. The er / ivn 5 / density 0.2 cells at n ∈ SCAL_SAMP
-# are also scalability.smk's p = 10 column.
+# Densities sweep for COARSE: density × n at p = 10, per graph family and ivn.
 DENS_IVNS = [2, 5, 8]
 DENS_GRAPHS = ["er", "sf"]
 DENS_METRICS = ["ari", "fscore", "runtime_sec"]

@@ -1,21 +1,12 @@
 # Learning Causal Abstractions by Scoring Coarse Parents
 
-This repository contains the pure-Python implementation of **COARSE** (**C**ausal
-**O**rdering via **A**bstraction and **R**ecovery from **S**oft int**E**rventions), the
-method developed for my MSc thesis.
-
-The implementation is provided by the `COARSE` class in
-[`src/coarse/coarse.py`](src/coarse/coarse.py); cross-validated threshold selection is
-provided by `cv_coarse` / `COARSECV` in [`src/coarse/cv.py`](src/coarse/cv.py).
-
-Experiments are organized into a Snakemake workflow, with the
-[`src/expt/workflow/Snakefile`](src/expt/workflow/Snakefile) entry point.
+**COARSE** (**C**ausal **O**rdering via **A**bstraction and **R**ecovery from **S**oft
+int**E**rventions) learns a partition of the variables and a DAG over its blocks from
+observational and soft-interventional data.
 
 ## Installation
 
-Dependencies, versioning, and installation are handled by
-[`uv`](https://docs.astral.sh/uv/getting-started/) via the included `pyproject.toml` and
-`uv.lock`. The first time `uv run <...>` is called, it downloads and installs everything.
+With [uv](https://docs.astral.sh/uv/getting-started/):
 
 ```bash
 uv sync
@@ -24,32 +15,57 @@ uv sync
 ## Usage
 
 ```python
-import numpy as np
-from coarse import COARSE
+from coarse import COARSE, COARSECV
 
-# data_dict maps each environment to an (n_e, p) array of samples.
-# "obs" is the observational/baseline environment; the other keys are
-# soft-intervention environments. COARSE models *soft* interventions only.
-data_dict = {
-    "obs": X_obs,    # ndarray (n, p)
-    1:     X_env1,
-    2:     X_env2,
-}
+# One (n_e, p) array per environment; "obs" is the observational one.
+data_dict = {"obs": X_obs, 1: X_env1, 2: X_env2}
 
-model = COARSE().fit(data_dict)
-print(model.dag)        # networkx.DiGraph over variable blocks
-print(model.partition)  # the inferred partition Π_E
+model = COARSE().fit(data_dict, alpha=1e-4)
+model.partition   # list of blocks (frozensets of column indices)
+model.dag         # networkx.DiGraph over the blocks
+
+model = COARSECV().fit(data_dict)   # alpha chosen by 10-fold cross-validation
+```
+
+## Tests
+
+```bash
+uv run pytest tests/
 ```
 
 ## Reproducing the experiments
 
-- `uv run pytest tests/` — quick check from the project root.
-- From `src/expt/`:
-  - `uv run snakemake results/coarse/er_ari_ivn=2.pdf --cores all` — reproduce one figure.
-  - `uv run snakemake all --cores all` — reproduce all experiments; the first call
-    downloads the third-party `causalchamber` dataset.
+Run from `src/expt/`. Outputs go to `src/expt/results/`.
 
-All Snakemake outputs are saved in `src/expt/results/`. Decrease `--cores` (e.g. `10`) as needed.
+| Experiment | Command |
+|---|---|
+| Densities | `uv run snakemake densities_all --cores 12` |
+| Scalability | `uv run snakemake scalability_all --cores 12 --resources mem_mb=24000` |
+| Noise | `uv run snakemake noise_all --cores 12` |
+| Method comparison | `uv run snakemake methods_compare_all --cores 12 --resources mem_mb=24000` |
+| Causal Chamber | `uv run snakemake causalchamber --cores 4` |
+| All of the above | `uv run snakemake all --cores 12 --resources mem_mb=24000 --keep-going` |
+
+- `mem_mb` caps the memory of concurrent cells; the largest scalability cells need about 14 GB.
+- Add `--config smoke=1` (after the target) for a quick run on small grids.
+- Add `--scheduler greedy` if Snakemake's ILP scheduler fails.
+- The first Causal Chamber run downloads the dataset.
+
+## Third-party code
+
+- [RePaRe](https://github.com/Alex-Markham/repare) (GPL-3.0): a dependency. The Causal
+  Chamber scripts and `fit_oracle_repare.py` are adapted from its experiments.
+- UT-IGSP wrapper `src/expt/workflow/scripts/ut_igsp.py` (BSD-3-Clause, J. L. Gamella): vendored
+  from [causal-chamber-paper](https://github.com/juangamella/causal-chamber-paper).
+- [GIES](https://github.com/juangamella/gies), [GnIES](https://github.com/juangamella/gnies),
+  [sempler](https://github.com/juangamella/sempler) and
+  [causaldag](https://github.com/uhlerlab/causaldag) (BSD-3-Clause): dependencies.
+- [causalchamber](https://github.com/juangamella/causal-chamber-package) (MIT) and the
+  [Causal Chamber datasets](https://github.com/juangamella/causal-chamber) (CC-BY 4.0).
+
+## License
+
+GPL-3.0-or-later (see `COPYING`).
 
 ## Citing
 

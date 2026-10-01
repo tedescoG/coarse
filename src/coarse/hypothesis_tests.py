@@ -1,13 +1,5 @@
-"""Build the interventional descendant indicator matrix M.
-
-Statical hypotheses tests:
-- Welch t-test
-- Kolmogorov-Smirnov test
-- Energy-distance test (dcor.homogeneity.energy_test)
-- Gaussian LRT (assumes Gaussian data)
-
-All test are exposed via TEST_REGISTRY and the `compute_M` dispatcher.
-"""
+"""Descendant test: the matrix M from per-variable two-sample tests (Welch, KS, energy,
+Gaussian LRT)."""
 
 from __future__ import annotations
 
@@ -26,9 +18,7 @@ def welch_p(x: np.ndarray, y: np.ndarray) -> float:
 
 
 def gaussian_lrt_p(x: np.ndarray, y: np.ndarray) -> float:
-    """Gaussian likelihood-ratio test p-value for
-    `H0: x, y come from the same N(mu, sigma^2)`  vs  different normals.
-    """
+    """Gaussian LRT p-value for `H0: x, y ~ same N(μ, σ²)`."""
     m_x = x.size
     m_y = y.size
     mu_x = x.mean()
@@ -56,10 +46,7 @@ def energy_p(
     num_resamples: int = 199,
     rng: np.random.Generator | None = None,
 ) -> float:
-    """Energy-distance two-sample test (dcor.homogeneity.energy_test) p-value.
-
-    Higher num_resamples = more stable p-values at the cost of runtime;
-    """
+    """Energy-distance permutation test p-value."""
     seed = None if rng is None else int(rng.integers(0, 2**31 - 1))
     result = dcor.homogeneity.energy_test(
         x.reshape(-1, 1),
@@ -67,23 +54,19 @@ def energy_p(
         num_resamples=num_resamples,
         random_state=seed,
     )
-    return float(result.p_value)
+    return float(result.pvalue)
 
 
 TEST_REGISTRY: dict[str, Callable[..., float]] = {
     "welch": welch_p,
     "ks": ks_p,
     "energy": energy_p,
-    "gaussian_lrt": gaussian_lrt_p,  # Gaussian likelihood-ratio test (mean + variance)
+    "gaussian_lrt": gaussian_lrt_p,
 }
 
 
 def _normalize_env_data(env_value: Any) -> np.ndarray:
-    """Coerce one env entry to a contiguous float64 (n_e, p) ndarray.
-
-    Targets and types are
-    accepted-and-ignored (COARSE doesn't use intervention-target metadata).
-    """
+    """One env entry as a validated float64 (n_e, p) array; targets and type are ignored."""
     if isinstance(env_value, dict):
         if "data" not in env_value:
             raise ValueError("dict-form env value must contain a 'data' key")
@@ -105,24 +88,22 @@ def _normalize_env_data(env_value: Any) -> np.ndarray:
 
 
 def _vectorized_welch(X0: np.ndarray, Xe: np.ndarray) -> np.ndarray:
-    """Vectorised Welch t-test across columns: returns 1-D array of length p."""
+    """Column-wise Welch p-values."""
     result = stats.ttest_ind(X0, Xe, equal_var=False, axis=0, nan_policy="omit")
     pvals = np.asarray(result.pvalue, dtype=np.float64)
-    # SciPy returns NaN when one column is constant in both samples; treat as p = 1
-    # (no evidence of a distributional change).
+    # NaN when a column is constant in both samples: no evidence of change.
     return np.where(np.isnan(pvals), 1.0, pvals)
 
 
 def _vectorized_gaussian_lrt(X0: np.ndarray, Xe: np.ndarray) -> np.ndarray:
-    """Vectorised Gaussian LRT across columns.Returns a 1-D p-value array of length p."""
+    """Column-wise Gaussian LRT p-values."""
     m_x = X0.shape[0]
     m_y = Xe.shape[0]
     mu_x = X0.mean(axis=0)
     mu_y = Xe.mean(axis=0)
     s2_x = np.maximum(((X0 - mu_x) ** 2).mean(axis=0), 1e-12)
     s2_y = np.maximum(((Xe - mu_y) ** 2).mean(axis=0), 1e-12)
-    # Pooled (null) mean and variance — avoid materialising the concatenated
-    # array column-wise; use the closed-form combined sample variance instead.
+    # Pooled variance in closed form.
     total = m_x + m_y
     mu_c = (m_x * mu_x + m_y * mu_y) / total
     s2_c = np.maximum(
@@ -146,16 +127,8 @@ def compute_M(
     rng: np.random.Generator | None = None,
     baseline_key: EnvKey = "obs",
 ) -> tuple[np.ndarray, list[EnvKey]]:
-    """Descendant Test. Build M in {0,1}^{|V| x (|E|-1)} by testing
-    every variable in every non-baseline environment against the baseline.
-
-    Returns
-    -------
-    M : ndarray of bool, shape (|V|, |E|-1)
-        M[v, e] = 1 iff the test p-value is below alpha.
-    env_order : list[EnvKey]
-        Non-baseline env keys in M's column order (sorted lex by key).
-    """
+    """`M[v, e]` is True iff variable v differs between env e and the baseline (p < alpha).
+    Returns `(M, env_order)`, columns in string-sorted key order."""
     if baseline_key not in data_dict:
         raise ValueError(
             f"data_dict must contain a baseline env keyed {baseline_key!r}"

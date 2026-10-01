@@ -1,6 +1,4 @@
-"""Fit COARSE under the oracle partition. Handles both the no-PCA baseline and the kPC
-variant: `k` comes from the rule params (`None` → plain COARSE), the same idiom as fit.py.
-"""
+"""Fit COARSEOracle (plain, or kPC when `k` is set) under the true partition."""
 
 import pickle
 import time
@@ -20,7 +18,6 @@ intervention_type = normalize_intervention_type(
 )
 num_nodes = int(snakemake.wildcards.num_nodes)
 
-# Optional kPC param — the oracle rule maps the `method` wildcard to k (None for plain COARSE).
 k_param = getattr(snakemake.params, "k", None)
 k = int(k_param) if k_param is not None else None
 

@@ -1,9 +1,5 @@
-"""Shared helpers for the CausalChamber experiment scripts.
-
-Graphs are `nx.DiGraph`s whose nodes are sorted atom-index tuples (the `COARSE.dag`
-convention). Atomic baselines (GIES / GnIES / UT-IGSP) are scored after projection onto the
-true coarsening Π (`quotient_graph`), so every method is compared at the coarse level.
-"""
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
+"""Helpers shared by the Causal Chamber scripts."""
 from __future__ import annotations
 
 from typing import Iterable
@@ -16,77 +12,46 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 
-from coarse.partition import infer_partition
-
-from _common import partition_labels
+from _common import PRF_KEYS, prf
 
 
 def build_block_data_dict(blocks: dict, targets: dict[str, set[int]]) -> dict:
-    """Construct the (X, targets, type) input dict shared by COARSE and RePaRe.
-
-    Both methods accept `{"obs": (X, set(), "obs"), env_key: (X, targets, "soft")}`.
-    """
+    """`{"obs": (X, set(), "obs"), env: (X, targets, "soft")}` for COARSE and RePaRe."""
     data: dict = {"obs": (blocks["obs"], set(), "obs")}
     for label, tgt in targets.items():
         data[label] = (blocks[label], set(int(t) for t in tgt), "soft")
     return data
 
 
-
-def _prf(tp: int, n_est: int, n_true: int) -> dict:
-    precision = tp / n_est if n_est else 1.0
-    recall = tp / n_true if n_true else 1.0
-    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-    return {"precision": precision, "recall": recall, "f1": f1}
+def graph_edge_metrics(est_graph, true_graph):
+    """Directed-edge P/R/F1."""
+    tp = sum(1 for edge in est_graph.edges if true_graph.has_edge(*edge))
+    return dict(zip(PRF_KEYS, prf(tp, len(est_graph.edges), len(true_graph.edges))))
 
 
+def skeleton_metrics(est_graph, true_graph):
+    """Undirected-edge P/R/F1."""
+    est_edges = {frozenset(edge) for edge in est_graph.edges}
+    true_edges = {frozenset(edge) for edge in true_graph.edges}
+    tp = len(est_edges & true_edges)
+    return dict(zip(PRF_KEYS, prf(tp, len(est_edges), len(true_edges))))
 
-def quotient_graph(atom_edges, blocks) -> nx.DiGraph:
-    """Atomic edges collapsed onto `blocks` (tuple nodes): A → B iff some u → v has u ∈ A,
-    v ∈ B, A ≠ B. Every ordered pair counts, so the quotient may be cyclic."""
-    nodes = [tuple(sorted(int(u) for u in block)) for block in blocks]
-    block_of = {u: node for node in nodes for u in node}
+
+def atomic_graph(adj: np.ndarray) -> nx.DiGraph:
+    """Edge i → j for every nonzero `adj[i, j]` (an undirected edge becomes both)."""
     graph = nx.DiGraph()
-    graph.add_nodes_from(nodes)
-    for u, v in atom_edges:
-        a, b = block_of[int(u)], block_of[int(v)]
-        if a != b:
-            graph.add_edge(a, b)
+    graph.add_nodes_from(range(adj.shape[0]))
+    graph.add_edges_from((int(i), int(j)) for i, j in zip(*np.nonzero(adj)))
     return graph
 
 
-def _edge_prf(est_edges, true_edges, prefix: str) -> dict:
-    out = {}
-    est, true = set(est_edges), set(true_edges)
-    for kind, (e, t) in {
-        "dir": (est, true),
-        "skel": ({frozenset(x) for x in est}, {frozenset(x) for x in true}),
-    }.items():
-        out.update({f"{prefix}_{kind}_{k}": v for k, v in _prf(len(e & t), len(e), len(t)).items()})
-    return out
-
-
-def _atom_pairs(block_dag: nx.DiGraph) -> set:
-    return {(u, v) for a, b in block_dag.edges for u in a for v in b}
-
-
-def all_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph, true_blocks) -> dict:
-    """Direction (`dir`) and skeleton (`skel`) P/R/F1 of a block graph.
-    `blk_*`: against the atomic truth collapsed onto the estimate's blocks.
-    `atom_*`: estimate and true coarse graph G/Π both expanded to atom pairs."""
-    model_dag = quotient_graph(_atom_pairs(model_dag), model_dag.nodes)  # sorted-tuple nodes
-    blk = quotient_graph(true_graph.edges, model_dag.nodes)
-    true_coarse = quotient_graph(true_graph.edges, true_blocks)
-    return {
-        **_edge_prf(model_dag.edges, blk.edges, "blk"),
-        **_edge_prf(_atom_pairs(model_dag), _atom_pairs(true_coarse), "atom"),
-    }
+def singleton_dag(graph: nx.DiGraph) -> nx.DiGraph:
+    """`graph` with `(i,)` tuple nodes."""
+    return nx.relabel_nodes(graph, {node: (node,) for node in graph.nodes})
 
 
 def gaussian_bic_score(data: np.ndarray, graph: nx.DiGraph) -> float:
-    """Gaussian BIC of `graph` (atomic integer nodes) on `data`; lower is
-    better. Lifted from RePaRe's `causalchamber_utigsp.py` and used only for
-    UT-IGSP's data-driven grid selection on the observational sample."""
+    """Gaussian BIC of `graph` on `data`; lower is better."""
     if data.size == 0 or graph.number_of_nodes() == 0:
         return float("inf")
     n_samples = data.shape[0]
@@ -110,27 +75,13 @@ def gaussian_bic_score(data: np.ndarray, graph: nx.DiGraph) -> float:
     return float(-2 * total_ll + total_params * np.log(n_samples))
 
 
-def subsample_rows(arr: np.ndarray, max_rows: int, seed: int) -> np.ndarray:
-    """Return `arr` unchanged if it has at most `max_rows` rows, else a
-    seeded uniform row subsample (RePaRe's `subsample_env`, used for GnIES)."""
-    if arr.shape[0] <= max_rows:
-        return arr
-    rng = np.random.default_rng(seed)
-    take = rng.choice(arr.shape[0], size=max_rows, replace=False)
-    return arr[take]
-
-
 def select_targets(
     mode: str,
     group_targets: dict[str, set[int]],
     single_env_labels: list[str],
     name_to_idx: dict[str, int],
 ) -> dict[str, set[int]]:
-    """Intervention regime → `{env_label: target atom indices}`.
-
-    "grouped": the pooled rgb / pol blocks with their multi-target sets.
-    "ungrouped": one env per single-variable experiment, targeting itself.
-    """
+    """`{env: targets}`: "grouped" pools rgb / pol, "ungrouped" has one env per variable."""
     if mode == "grouped":
         return {label: set(t) for label, t in group_targets.items()}
     if mode == "ungrouped":
@@ -139,19 +90,12 @@ def select_targets(
 
 
 def baseline_env_lists(
-    mode: str,
     blocks: dict,
-    group_targets: dict[str, set[int]],
     single_env_labels: list[str],
     name_to_idx: dict[str, int],
 ) -> tuple[list[np.ndarray], list[list[int]], list[str]]:
-    """List-form input for the atomic baselines (GIES / GnIES / UT-IGSP).
-
-    Returns `(data_list, target_lists, env_labels)` with the observational
-    sample first and an empty target list for it — the layout `gies.fit_bic`,
-    `gnies.fit` and `ut_igsp.fit(obs_idx=0)` expect.
-    """
-    targets = select_targets(mode, group_targets, single_env_labels, name_to_idx)
+    """`(data_list, target_lists, env_labels)` of the ungrouped regime, observational first."""
+    targets = select_targets("ungrouped", {}, single_env_labels, name_to_idx)
     env_labels = ["obs", *targets]
     data_list = [blocks[label] for label in env_labels]
     target_lists = [[], *(sorted(int(t) for t in targets[l]) for l in targets)]
@@ -161,12 +105,7 @@ def baseline_env_lists(
 def labeled_summary(
     model_dag: nx.DiGraph, feature_cols: list[str]
 ) -> tuple[list[tuple[int, tuple[str, ...]]], list[tuple[int, int]]]:
-    """Extract a JSON-friendly partition + edge summary.
-
-    Returns ([(idx, (col_name, ...)), ...], [(u_idx, v_idx), ...]) — node
-    iteration order is preserved (networkx DiGraph stores insertion order), so
-    `idx` lines up across calls on the same DAG.
-    """
+    """JSON-friendly `([(idx, names), ...], [(u_idx, v_idx), ...])` in node order."""
     node_to_idx = {node: idx for idx, node in enumerate(model_dag.nodes)}
     parts = [
         (idx, tuple(feature_cols[i] for i in part))
@@ -182,10 +121,7 @@ def draw_dag(
     ax,
     title: str | None = None,
 ) -> None:
-    """Draw `model_dag` onto a matplotlib `ax` with column-name tuples as node
-    labels. Shared by `save_dag_plot` (single-panel PNG) and the aggregator's
-    3-panel figure.
-    """
+    """Draw `model_dag` on `ax`, nodes labelled by column names."""
     labeled = nx.relabel_nodes(
         model_dag,
         {node: tuple(feature_cols[idx] for idx in node) for node in model_dag.nodes},
@@ -223,10 +159,7 @@ def dag_from_labeled_parts(
     edges: Iterable[tuple[int, int]],
     name_to_idx: dict[str, int],
 ) -> nx.DiGraph:
-    """Reconstruct an `nx.DiGraph` (atomic-index nodes) from the JSON-friendly
-    summary produced by `labeled_summary`. Used by the aggregator to redraw
-    DAGs without unpickling models.
-    """
+    """Inverse of `labeled_summary`: tuple-of-index nodes."""
     idx_to_node: dict[int, tuple[int, ...]] = {}
     dag = nx.DiGraph()
     for idx, labels in parts:
@@ -239,10 +172,7 @@ def dag_from_labeled_parts(
 
 
 def descendant_mask(atom_indices, parts, true_dag_full: nx.DiGraph) -> np.ndarray:
-    """Boolean mask over `parts` (atomic partition) marking every part whose
-    atom set intersects the descendant closure of `atom_indices` in
-    `true_dag_full`. Used to build ground-truth intervention masks.
-    """
+    """Mask of the parts hit by `atom_indices` or their descendants."""
     closure = set(atom_indices)
     for idx in list(atom_indices):
         closure.update(nx.descendants(true_dag_full, idx))
@@ -254,71 +184,53 @@ def descendant_mask(atom_indices, parts, true_dag_full: nx.DiGraph) -> np.ndarra
 
 
 def ground_truth_partition(target_dict, parts, true_dag_full: nx.DiGraph):
-    """Compute the ground-truth partition + atomic label vector for a given
-    intervention regime.
+    """Ground-truth partition and labels for an intervention regime."""
+    from repare.repare import _get_totally_ordered_partition
 
-    Builds the M_true mask matrix (num_parts × num_envs) by descendant-closure,
-    then feeds it to `coarse.partition.infer_partition` — same pattern as
-    `scripts/_common.build_oracle_partition` already uses.
-    """
-    masks = []
-    for label in sorted(target_dict):
+    ordered_masks = {}
+    for order, label in enumerate(sorted(target_dict)):
         atom_union = set().union(*[parts[idx] for idx in target_dict[label]])
-        masks.append(descendant_mask(atom_union, parts, true_dag_full))
-    if not masks:
-        return [], np.zeros(len(parts), dtype=int)
-    M_true = np.column_stack(masks).astype(bool)
-    partition = infer_partition(M_true)
-    labels = partition_labels(partition, len(parts))
+        ordered_masks[str(order)] = descendant_mask(atom_union, parts, true_dag_full)
+    partition = _get_totally_ordered_partition(ordered_masks)
+    labels = np.zeros(len(parts), dtype=int)
+    for label, block in enumerate(partition):
+        labels[list(block)] = label
     return partition, labels
 
 
+def select_score_row(records: list[dict]) -> dict:
+    """Min score; ties to the smaller α, then β."""
+    return min(records, key=lambda r: (r["score"], r["alpha"], r["beta"]))
+
+
 def select_oracle_row(records: list[dict]) -> dict:
-    """Ground-truth pick over the whole grid: max ARI, then atom direction F1, then its
-    precision, then score."""
+    """Max ARI, then F1; ties to the smaller α, then β."""
     return max(
-        records,
-        key=lambda r: (r["ari"], r["atom_dir_f1"], r["atom_dir_precision"], r["score"]),
+        records, key=lambda r: (r["ari"], r["f1"], -r["alpha"], -r.get("beta", 0.0))
     )
 
 
 def select_utigsp_score_row(records: list[dict]) -> dict:
-    """UT-IGSP data-driven pick: min observational Gaussian BIC. Ties go to
-    the first cell in grid order (smaller `alpha_ci`, then `alpha_inv`) —
-    RePaRe's `df["bic"].idxmin()`. Ground truth never enters."""
+    """Min observational BIC; ties to the first cell in grid order."""
     return min(records, key=lambda r: (r["bic"], r["alpha_ci"], r["alpha_inv"]))
 
 
 def select_utigsp_oracle_row(records: list[dict]) -> dict:
-    """UT-IGSP ground-truth pick: max atom direction `f1 * precision` (RePaRe's rule), ties
-    to the first cell in grid order."""
+    """Max `f1 * precision`; ties to the first cell in grid order."""
     return max(
         records,
-        key=lambda r: (
-            r["atom_dir_f1"] * r["atom_dir_precision"], -r["alpha_ci"], -r["alpha_inv"]
-        ),
+        key=lambda r: (r["f1"] * r["precision"], -r["alpha_ci"], -r["alpha_inv"]),
     )
 
 
-METRIC_KEYS = tuple(
-    f"{ref}_{kind}_{stat}"
-    for ref in ("blk", "atom")
-    for kind in ("dir", "skel")
-    for stat in ("precision", "recall", "f1")
-)
 PAYLOAD_KEYS = (
-    "alpha", "second_hp", "second_hp_name", "ari", *METRIC_KEYS,
-    "score", "fit_time", "search_runtime_sec", "num_parts", "num_edges",
+    "metric_type", "ari", "precision", "recall", "f1", "fit_time", "search_runtime_sec",
+    "score", "alpha", "beta", "alpha_ci", "alpha_inv", "lambda", "num_parts", "num_edges",
 )
 
 
 def params_payload(row: dict, parts, edges, **extra) -> dict:
-    """JSON payload for `score_params.json` / `oracle_params.json`.
-
-    Every method emits the same `PAYLOAD_KEYS` (missing ones are `None`) plus
-    the `labeled_summary` `parts` / `edges` and any method-specific `extra`
-    (e.g. `k`, `n_folds`, `estimated_targets`).
-    """
+    """`PAYLOAD_KEYS` (missing → None), `extra`, then `parts` / `edges`."""
     payload = {key: row.get(key) for key in PAYLOAD_KEYS}
     payload.update(extra)
     payload["parts"] = parts
@@ -333,3 +245,89 @@ METHOD_LABEL = {
     "gnies": "GnIES",
     "utigsp": "UT-IGSP",
 }
+
+
+# Variable- and block-level metrics with negative controls. A graph is (arcs, undirected).
+LEVELS = ("variable", "block")
+VARIABLE_METRICS = ("adj_precision", "adj_recall", "adj_f1", "dir_precision", "dir_recall",
+                    "dir_f1")
+
+
+def split_edges(pairs):
+    pairs = set(pairs)
+    arcs = {e for e in pairs if (e[1], e[0]) not in pairs}
+    return arcs, {frozenset(e) for e in pairs if (e[1], e[0]) in pairs}
+
+
+def expand_blocks(block_edges):
+    return {(u, v) for a, b in block_edges for u in a for v in b}, set()
+
+
+def collapse(graph, block_of):
+    arcs, und = graph
+    pairs = {(block_of[u], block_of[v]) for u, v in arcs}
+    for u, v in map(tuple, und):
+        pairs |= {(block_of[u], block_of[v]), (block_of[v], block_of[u])}
+    return split_edges((a, b) for a, b in pairs if a != b)
+
+
+def icpdag(arcs, family, p):
+    from causaldag import DAG
+
+    dag = DAG(nodes=set(range(p)), arcs=set(arcs))
+    out = dag.interventional_cpdag([set(t) for t in family], cpdag=dag.cpdag())
+    return set(out.arcs), {frozenset(e) for e in out.edges}
+
+
+def variable_metrics(est, true_arcs) -> dict:
+    """Adjacency and directed (undirected = both ways) metrics."""
+    arcs, und = est
+    est_adj = {frozenset(e) for e in arcs} | und
+    true_adj = {frozenset(e) for e in true_arcs}
+    est_dir = arcs | {(u, v) for e in und for u, v in (tuple(e), tuple(e)[::-1])}
+    tp_adj = len(est_adj & true_adj)
+    out = dict(zip(VARIABLE_METRICS[:3], prf(tp_adj, len(est_adj), len(true_adj))))
+    out.update(zip(VARIABLE_METRICS[3:],
+                   prf(len(est_dir & true_arcs), len(est_dir), len(true_arcs))))
+    out["m_est"], out["tp_adj"] = len(est_adj), tp_adj
+    return out
+
+
+def exact_nc(m_max, m_true, m_est, tp) -> dict:
+    """Hypergeometric null of the adjacency metrics: (mean, 2.5%, 97.5%, P(TP ≥ tp))."""
+    from scipy.stats import hypergeom
+
+    rv = hypergeom(m_max, m_true, m_est)
+    lo, hi, p = rv.ppf(0.025), rv.ppf(0.975), float(rv.sf(tp - 1))
+    scale = {"adj_precision": m_est, "adj_recall": m_true, "adj_f1": (m_est + m_true) / 2}
+    return {k: (m_est * m_true / m_max / s, lo / s, hi / s, p) for k, s in scale.items()}
+
+
+def _forward(order):
+    return [(order[i], order[j]) for i in range(len(order)) for j in range(i + 1, len(order))]
+
+
+def random_icpdag(rng, p, m_adj, family):
+    fwd = _forward([int(v) for v in rng.permutation(p)])
+    return icpdag((fwd[i] for i in rng.choice(len(fwd), m_adj, replace=False)), family, p)
+
+
+def random_expanded(rng, blocks, k):
+    fwd = _forward([blocks[i] for i in rng.permutation(len(blocks))])
+    return expand_blocks(fwd[i] for i in rng.choice(len(fwd), k, replace=False))
+
+
+def sim_nc(draw, n, rng, truths, block_of, observed) -> dict:
+    """Simulated null per (level, metric): (mean, 2.5%, 97.5%, P(NC ≥ observed))."""
+    vals = {(lv, k): [] for lv in LEVELS for k in VARIABLE_METRICS}
+    for _ in range(n):
+        graph = draw(rng)
+        for lv, g in zip(LEVELS, (graph, collapse(graph, block_of))):
+            m = variable_metrics(g, truths[lv])
+            for k in VARIABLE_METRICS:
+                vals[(lv, k)].append(m[k])
+    return {
+        (lv, k): (np.mean(v), *np.quantile(v, [0.025, 0.975]),
+                  float(np.mean(np.asarray(v) >= observed[lv][k])))
+        for (lv, k), v in vals.items()
+    }

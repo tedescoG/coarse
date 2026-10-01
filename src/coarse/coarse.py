@@ -1,8 +1,4 @@
-"""COARSE and COARSEOracle classes.
-
-- COARSE: main class implementation of the algorithm. Estimate partition and coarse DAG from interventional data.
-- COARSEOracle: used for experiment on known partition. Recover edges by using the block level score-based grow-shrink.
-"""
+"""COARSE (partition and block DAG from data) and COARSEOracle (block DAG given the partition)."""
 
 from __future__ import annotations
 
@@ -32,17 +28,11 @@ def _project_blocks(
     k: int,
     baseline_key: EnvKey,
 ) -> tuple[dict[EnvKey, np.ndarray], list[Block], dict[Block, Block]]:
-    """Per-block PCA projection for kPC-COARSE.
-
-    For each block π_j, computes the top-k_j right singular vectors from the
-    observational environment, then projects every environment's
-    block data onto that basis.  Returns projected env arrays
-    (n_e, K), the remapped partition, and the original→projected block map.
-    """
+    """kPC-COARSE: project every env's block onto the block's top-k right singular vectors
+    of the baseline env. Returns the projected arrays, partition and block map."""
     offset = 0
     proj_partition: list[Block] = []
     block_map: dict[Block, Block] = {}
-    # (column indices into the *original* p-dimensional arrays, V_j matrix)
     projections: list[tuple[np.ndarray, np.ndarray]] = []
 
     for block in partition:
@@ -53,9 +43,7 @@ def _project_blocks(
         ref = env_arrays[baseline_key][:, orig_idx]
 
         _, _, Vt = np.linalg.svd(ref, full_matrices=False)
-        # SVD returns only min(n_ref, r_j) right singular vectors when the
-        # reference matrix has fewer rows than columns. Clamping k_j here
-        # keeps proj_block, offset, and V_j.shape[1] in lock-step.
+        # The SVD has only min(n_ref, r_j) vectors.
         k_j = min(k_j, Vt.shape[0])
         V_j = Vt[:k_j, :].T  # (r_j, k_j)
 
@@ -76,15 +64,8 @@ def _project_blocks(
 def _normalize_data_dict(
     data_dict: dict[EnvKey, Any], baseline_key: EnvKey = "obs"
 ) -> tuple[dict[EnvKey, np.ndarray], EnvKey]:
-    """Coerce every entry to a contiguous float64 (n_e, p) ndarray and
-    validate that the baseline env is present.
-
-    Each env value may be a bare 2-D array, a ``(data, targets, type)`` tuple,
-    or a ``{"data": ...}`` dict. Intervention targets and intervention-type
-    strings are accepted-and-ignored: COARSE reads only the data array.
-
-    Raise an exception if at least one environment has duplicated or constant columns.
-    """
+    """Validated float64 (n_e, p) arrays. An env is an array, a `(data, targets, type)` tuple
+    or a `{"data": ...}` dict; only the data is used."""
     if baseline_key not in data_dict:
         raise ValueError(
             f"data_dict must contain a baseline env keyed {baseline_key!r}"
@@ -105,8 +86,7 @@ def _normalize_data_dict(
 
 
 def _check_columns_non_degenerate(key: EnvKey, arr: np.ndarray) -> None:
-    """Raise ``ValueError`` if ``arr`` has a constant column, two identical
-    columns, or (when ``n > p``) linearly dependent columns after centering."""
+    """Reject constant, identical or (when n > p) linearly dependent columns."""
     constant = np.flatnonzero(np.ptp(arr, axis=0) == 0.0)
     if constant.size:
         raise ValueError(
@@ -115,7 +95,6 @@ def _check_columns_non_degenerate(key: EnvKey, arr: np.ndarray) -> None:
     p = arr.shape[1]
     if p < 2:
         return
-    # Sort columns lexicographically; duplicates become adjacent.
     order = np.lexsort(arr[::-1])
     cols = arr[:, order]
     dup = np.flatnonzero(np.all(cols[:, 1:] == cols[:, :-1], axis=0))
@@ -124,9 +103,7 @@ def _check_columns_non_degenerate(key: EnvKey, arr: np.ndarray) -> None:
         raise ValueError(f"env {key!r}: columns {i} and {j} are identical")
     n = arr.shape[0]
     if n > p:
-        # Only numerically exact dependence trips this: `matrix_rank` uses the
-        # default tolerance `s_max * max(n, p) * eps`, so a noisy linear child
-        # keeps full rank. Undersized envs (n <= p) are left to the -inf path.
+        # Default tolerance: only exact dependence fails. n <= p is left to the -inf path.
         centered = arr - arr.mean(axis=0, keepdims=True)
         rank = int(np.linalg.matrix_rank(centered))
         if rank < p:
@@ -138,9 +115,7 @@ def _check_columns_non_degenerate(key: EnvKey, arr: np.ndarray) -> None:
 def _materialize_dag(
     partition: list[Block], parent_sets: dict[Block, list[Block]]
 ) -> nx.DiGraph:
-    """Build a directed graph where each node is `tuple(sorted(block))` and
-    each edge corresponds to a learned parent → child relationship.
-    """
+    """Block DAG with `tuple(sorted(block))` nodes."""
     dag = nx.DiGraph()
     for block in partition:
         dag.add_node(tuple(sorted(block)))
@@ -166,18 +141,8 @@ def _run_score_phase(
     dict[Block, list[Block]],
     float,
 ]:
-    """Derive signature + grow-shrink loop for both COARSE and
-    COARSEOracle.
-
-    Computes supports, candidate pools, τ, parent sets, and the
-    total score Σ_j BIC_j(π_j, P̂a_j).
-
-    Centers each env's data once per fit before scoring: `block_residual_covariance`
-    (and everything downstream of it) assumes column-centered input.
-
-    When ``k`` is not None (running kPC-COARSE), scales every env's columns by the
-    *observational* standard deviation.
-    """
+    """Supports, candidate pools, τ, parent sets and total BIC, shared by both classes.
+    Centers each env here, once; kPC (`k` set) also scales by the baseline std."""
     if k is not None and (
         isinstance(k, bool) or not isinstance(k, (int, np.integer)) or k < 1
     ):
@@ -188,19 +153,16 @@ def _run_score_phase(
         ek: v - v.mean(axis=0, keepdims=True) for ek, v in env_arrays.items()
     }
     if k is not None:
-        # Constant columns are rejected by `_normalize_data_dict`, so obs_std > 0.
+        # obs_std > 0: constant columns are rejected upstream.
         obs_std = centered_env_arrays[baseline_key].std(axis=0, keepdims=True)
         centered_env_arrays = {
             ek: v / obs_std for ek, v in centered_env_arrays.items()
         }
 
-    # Supports & candidate pools always from original partition + M.
     supports = compute_supports(M, partition)
     candidate_pools = compute_candidate_pools(supports)
-    # τ is the partition's own order.
     tau = list(partition)
 
-    # --- kPC-COARSE: per-block PCA projection ---------------------------------
     if k is not None:
         score_data, score_partition, block_map = _project_blocks(
             partition, centered_env_arrays, k, baseline_key,
@@ -217,8 +179,6 @@ def _run_score_phase(
         score_tau = tau
         block_map = rev_map = None  # type: ignore[assignment]
 
-    # Precompute and cache per-env Σ̂^e.
-    # Avoid re-computing the covariance matrix for each evaluation.
     env_stats = compute_env_stats(score_data)
 
     parent_sets_scored: dict[Block, list[Block]] = {}
@@ -238,7 +198,6 @@ def _run_score_phase(
         for pi_j in score_tau
     )
 
-    # Remap parent sets back to original blocks for DAG assembly.
     if block_map is not None:
         parent_sets = {
             rev_map[pi_j]: [rev_map[p] for p in parents]
@@ -253,20 +212,10 @@ def _run_score_phase(
 class COARSE:
     """Block-level score-based causal discovery from soft interventions.
 
-    Attributes set by `.fit`
-    ------------------------
-    partition : list[Block]                        — Π_E
-    M : ndarray (bool)                             — interventional descendant matrix
-    env_order : list[EnvKey]                       — column order of M
-    supports : dict[Block, frozenset[int]]         — supp(π) per block
-    candidate_pools : dict[Block, list[Block]]     — Pa⋆(π) per block
-    linear_extension_ : list[Block]                — τ ∈ T(≤_supp)
-    parent_sets : dict[Block, list[Block]]         — P̂a_j per block
-    dag : nx.DiGraph                               — nodes = tuple(sorted(block))
-    score : float                                  — total Σ_j BIC_j
-    num_features : int                             — feature count p
-    fit_metadata : dict[str, Any]
-    fit_runtime_sec : float
+    `fit` sets: `partition` (Π_E), `M`, `env_order` (columns of M), `supports`,
+    `candidate_pools`, `linear_extension_` (τ), `parent_sets`, `dag` (nodes are
+    `tuple(sorted(block))`), `score` (total BIC), `num_features`, `fit_metadata`,
+    `fit_runtime_sec`.
     """
 
     def __init__(self, rng: np.random.Generator | None = None) -> None:
@@ -284,12 +233,10 @@ class COARSE:
         start = time.perf_counter()
 
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
-        # Two independent sub-streams so the partition step and the score step
-        # can't influence each other through shared RNG state (e.g., when
-        # refine_test='energy' uses resampling).
+        # Independent streams for the tests and the score step.
         rng_M, rng_gs = self.rng.spawn(2)
 
-        # DescendantTest: compute the matrix M by marginal two-sample tests
+        # Descendant test: M from marginal two-sample tests.
         M, env_order = compute_M(
             env_arrays,
             alpha=alpha,
@@ -298,10 +245,9 @@ class COARSE:
             baseline_key=baseline_key,
         )
 
-        # RefineSplit: Refine partition by splitting over different supports
+        # Partition refinement.
         partition = infer_partition(M)
 
-        # Compute support, candidate parent pool and support ordering (linear extension)
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
             partition, M, env_arrays, lambda_pen, rng_gs,
             k=k, baseline_key=baseline_key,
@@ -332,8 +278,7 @@ class COARSE:
         return self
 
     def expand_coarsened_dag(self, fully_connected: bool = False) -> np.ndarray:
-        """Project the coarse partition DAG into a full p × p adjacency matrix.
-        """
+        """p × p adjacency of the block DAG; `fully_connected` also links each block internally."""
         num_features = self.num_features
         adjacency = np.zeros((num_features, num_features), dtype=int)
 
@@ -353,9 +298,7 @@ class COARSE:
 
 
 class COARSEOracle:
-    """Run COARSE with both partition and M provided as inputs.
-    Used for experiments focused solely on edge recovery.
-    """
+    """COARSE's score step with the partition and M given."""
 
     def __init__(self, rng: np.random.Generator | None = None) -> None:
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -374,7 +317,6 @@ class COARSEOracle:
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
         M = np.asarray(M, dtype=bool)
         p = env_arrays[baseline_key].shape[1]
-        # check M has the same number of rows as variable considered.
         if M.ndim != 2 or M.shape[0] != p:
             raise ValueError(
                 f"M has shape {M.shape}; expected ({p}, |E|-1) for {p} variables"
@@ -386,7 +328,7 @@ class COARSEOracle:
         canonical = infer_partition(M)
         if set(partition) != set(canonical):
             raise ValueError("partition must be the row-class partition of M")
-        # Use the canonical order so τ does not depend on the caller's list order.
+        # Canonical order, so τ ignores the caller's order.
         partition = canonical
         rng_gs = self.rng.spawn(1)[0]
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
