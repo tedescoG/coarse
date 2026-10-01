@@ -14,8 +14,7 @@ Two structural changes:
 
 Score convention: RePaRe selects HPs by minimizing `score`, which is
 `-gnies.full_score(expanded_adj)` (the negation flips GnIES BIC into
-lower-is-better). NOT comparable across methods — cross-method comparison
-uses ARI / block-edge precision / recall / F1.
+lower-is-better); not comparable across methods.
 
 Runtime convention (RePaRe's): `fit_time` is the selected cell's single fit;
 the grid total goes to `search_runtime_sec`.
@@ -61,8 +60,6 @@ def main():
         group_targets = pickle.load(f)
     with open(snakemake.input.truegraph, "rb") as f:
         true_graph = pickle.load(f)
-    with open(snakemake.input.truelabels, "rb") as f:
-        true_labels = pickle.load(f)
     with open(snakemake.input.truedagfull, "rb") as f:
         true_dag_full = pickle.load(f)
     with open(snakemake.input.nametoidx, "rb") as f:
@@ -77,8 +74,7 @@ def main():
     mode = snakemake.params.mode
 
     targets = select_targets(mode, group_targets, single_env_labels, name_to_idx)
-    if mode == "ungrouped":
-        _, true_labels = ground_truth_partition(targets, partition_parts, true_dag_full)
+    true_blocks, true_labels = ground_truth_partition(targets, partition_parts, true_dag_full)
 
     env_labels = list(targets)
     gnies_data = [blocks["obs"], *(blocks[label] for label in env_labels)]
@@ -116,7 +112,7 @@ def main():
             "fit_time": float(fit_time),
             "num_parts": int(model.dag.number_of_nodes()),
             "num_edges": int(model.dag.number_of_edges()),
-            **all_edge_metrics(model.dag, true_graph, native="partition"),
+            **all_edge_metrics(model.dag, true_graph, true_blocks),
         })
         dags[(float(alpha), float(beta))] = model.dag
 
@@ -129,10 +125,11 @@ def main():
 
     # RePaRe's native selection: min score (lower is better after negation);
     # tie-break: smaller α (ground truth never enters the score-selected row).
-    # Oracle: max ARI / F1 / precision, then min score.
+    # Oracle: max ARI / atom direction F1 / precision, then min score.
     score_row = min(records, key=lambda r: (r["score"], r["alpha"]))
     oracle_row = max(
-        records, key=lambda r: (r["ari"], r["f1"], r["precision"], -r["score"])
+        records,
+        key=lambda r: (r["ari"], r["atom_dir_f1"], r["atom_dir_precision"], -r["score"]),
     )
 
     score_dag = dags[(score_row["alpha"], score_row["beta"])]

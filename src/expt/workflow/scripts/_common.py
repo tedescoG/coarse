@@ -7,6 +7,8 @@ elsewhere in the codebase."
 """
 from __future__ import annotations
 
+import re
+
 import networkx as nx
 import numpy as np
 
@@ -108,14 +110,11 @@ def partition_labels(blocks, num_nodes: int) -> np.ndarray:
     return labels
 
 
-def block_dag_prf(est_dag: nx.DiGraph, true_dag: nx.DiGraph) -> tuple[float, float, float]:
-    """Precision, recall and F-score of the estimated block DAG.
-
-    The reference is the true DAG projected onto the *estimated* blocks: an edge
-    between two blocks exists iff some atom of the first has a true edge into
-    some atom of the second, taken over forward pairs in ``est_dag`` node order.
-    Shared by evaluate.py and the diagnostics so the metric has one definition.
-    """
+def project_true_dag(est_nodes, true_dag: nx.DiGraph) -> nx.DiGraph:
+    """The true DAG projected onto the estimated blocks: an edge between two blocks exists
+    iff some atom of the first has a true edge into some atom of the second, taken over
+    forward pairs in ``est_nodes`` order. This is the reference every block-DAG metric is
+    scored against."""
 
     def _is_adj(pa, ch):
         for atom in pa:
@@ -124,29 +123,38 @@ def block_dag_prf(est_dag: nx.DiGraph, true_dag: nx.DiGraph) -> tuple[float, flo
                     return True
         return False
 
-    true_edge_est_partition = nx.create_empty_copy(est_dag)
-    node_list = list(true_edge_est_partition.nodes)
+    reference = nx.DiGraph()
+    reference.add_nodes_from(est_nodes)
+    node_list = list(reference.nodes)
     for idx, pa in enumerate(node_list[:-1]):
         for ch in node_list[idx + 1 :]:
             if _is_adj(pa, ch):
-                true_edge_est_partition.add_edge(pa, ch)
+                reference.add_edge(pa, ch)
+    return reference
 
-    true_positive = sum(
-        (1 for edge in est_dag.edges if edge in true_edge_est_partition.edges)
-    )
-    try:
-        precision = true_positive / len(est_dag.edges)
-    except ZeroDivisionError:
-        precision = 1
-    try:
-        recall = true_positive / len(true_edge_est_partition.edges)
-    except ZeroDivisionError:
-        recall = 1
-    try:
-        f_score = 2 * (precision * recall) / (precision + recall)
-    except ZeroDivisionError:
-        f_score = 0
+
+def prf_from_counts(true_positive, m_est, m_true):
+    """Precision, recall and F-score from edge counts, with the suite's conventions for
+    empty edge sets: precision = 1 when nothing was estimated, recall = 1 when nothing was
+    to be found, F = 0 only when precision + recall = 0. Vectorised over ``true_positive``."""
+    tp = np.asarray(true_positive, dtype=float)
+    precision = tp / m_est if m_est else np.ones_like(tp)
+    recall = tp / m_true if m_true else np.ones_like(tp)
+    denominator = precision + recall
+    with np.errstate(divide="ignore", invalid="ignore"):
+        f_score = np.where(denominator > 0, 2 * precision * recall / denominator, 0.0)
+    if np.ndim(true_positive) == 0:
+        return float(precision), float(recall), float(f_score)
     return precision, recall, f_score
+
+
+def block_dag_prf(est_dag: nx.DiGraph, true_dag: nx.DiGraph) -> tuple[float, float, float]:
+    """Precision, recall and F-score of the estimated block DAG against
+    ``project_true_dag(est_dag.nodes, true_dag)``.
+    """
+    reference = project_true_dag(est_dag.nodes, true_dag)
+    true_positive = sum(1 for edge in est_dag.edges if reference.has_edge(*edge))
+    return prf_from_counts(true_positive, len(est_dag.edges), len(reference.edges))
 
 
 # --------------------------------------------------------------------------------------
@@ -161,7 +169,7 @@ def block_dag_prf(est_dag: nx.DiGraph, true_dag: nx.DiGraph) -> tuple[float, flo
 # re-standardized.
 # --------------------------------------------------------------------------------------
 
-NOISE_FAMILIES = ("gaussian", "uniform", "laplace")
+NOISE_FAMILIES = ("gaussian", "uniform", "laplace", "t3", "t4")
 
 
 def iscm_standardize(W: np.ndarray, noise_var: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -196,8 +204,9 @@ def noise_distribution(family: str, mean: float, var: float):
     """A sempler-style noise callable ``f(n)`` with the requested mean and variance.
 
     Uses ``sempler.noise`` (which draws from the global ``np.random`` state, the one
-    ``sempler.ANM.sample(random_state=...)`` seeds). Variance-matching parameters:
-    uniform half-width ``√3·sd``, Laplace scale ``sd/√2``.
+    ``sempler.ANM.sample(random_state=...)`` seeds); the Student-t callable draws from the
+    same state. Variance-matching parameters: uniform half-width ``√3·sd``, Laplace scale
+    ``sd/√2``, Student-t ``t<ν>`` scale ``sd·√((ν−2)/ν)`` (ν > 2, so the variance is finite).
     """
     import sempler.noise as noise  # local: sempler warns about rpy2 at import time
 
@@ -210,7 +219,14 @@ def noise_distribution(family: str, mean: float, var: float):
         case "laplace":
             return noise.laplace(mean, sd / np.sqrt(2))
         case _:
-            raise ValueError(f"unknown noise family {family!r}; expected one of {NOISE_FAMILIES}")
+            m = re.fullmatch(r"t(\d+)", family)
+            if m is None:
+                raise ValueError(f"unknown noise family {family!r}; expected one of {NOISE_FAMILIES}")
+            df = int(m.group(1))
+            if df <= 2:
+                raise ValueError(f"Student-t noise needs ν > 2 for a finite variance, got {family!r}")
+            scale = sd * np.sqrt((df - 2) / df)
+            return lambda n: mean + scale * np.random.standard_t(df, n)
 
 
 def draw_noise_params(p: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
@@ -265,8 +281,7 @@ def sample_shift(model, n: int, nodes, family: str = "gaussian", shift=(2.0, 1.0
 
 
 # --------------------------------------------------------------------------------------
-# The synthetic data generator: one function used by generate.py (Snakemake) and by the
-# diagnostics, so both sample exactly the same DGP.
+# The synthetic data generator used by generate.py.
 # --------------------------------------------------------------------------------------
 
 

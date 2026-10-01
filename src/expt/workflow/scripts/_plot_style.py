@@ -1,9 +1,5 @@
-"""Shared figure style for every synthetic-experiment plot script.
-
-One palette anchored on the thesis colours (KU red #901A1E, teal #0A5963), one
-typography, one label vocabulary and one axis-formatting rule, so figures from
-different rule files look like one suite. Import-only module (leading underscore):
-tests/test_plot_style.py imports it directly.
+"""Shared figure style for every synthetic-experiment plot script: palettes (Okabe–Ito for
+methods, mako for every other hue), labels and the log-axis tick policy.
 """
 
 from __future__ import annotations
@@ -24,29 +20,22 @@ from matplotlib.ticker import (
 )
 
 # --- colours ---------------------------------------------------------------------------
-KU_RED = "#901A1E"  # \definecolor{KUrod}{RGB}{144,26,30}
-TEAL = "#0A5963"  # \definecolor{teal}{HTML}{0A5963}
-GOLD = "#D6A43C"
-SLATE = "#3F6E9A"
-OLIVE = "#6B8F3A"
-GREY = "#7F7F7F"
-CATEGORICAL = [KU_RED, TEAL, GOLD, SLATE, OLIVE, GREY]
+OKABE_ITO = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000"]
 
 # --- methods ---------------------------------------------------------------------------
-# evaluate.py labels every oracle run "<method>-oracle"; figures show the thesis names and
-# the caption states the oracle-partition setting. COARSE is KU red in every figure.
+# evaluate.py labels every oracle run "<method>-oracle"; figures show the thesis names.
 METHOD_DISPLAY = {
     "COARSE": "COARSE",
-    "COARSE-CV": "COARSE-CV",
-    "COARSE-1PC": "COARSE-1PC",
     "COARSE-oracle": "COARSE",
     "kPC-k1-oracle": "COARSE-1PC",
     "kPC-k3-oracle": "COARSE-3PC",
     "RePaRe-oracle": "RePaRe",
 }
-METHOD_ORDER = ["COARSE", "COARSE-CV", "COARSE-1PC", "COARSE-3PC", "RePaRe"]
-METHOD_COLOR = dict(zip(METHOD_ORDER, [KU_RED, TEAL, GOLD, SLATE, OLIVE]))
-METHOD_MARKER = dict(zip(METHOD_ORDER, ["o", "D", "s", "^", "v"]))
+METHOD_ORDER = ["COARSE", "COARSE-1PC", "COARSE-3PC", "RePaRe"]
+METHOD_COLOR = {
+    "COARSE": "#0072B2", "COARSE-1PC": "#009E73", "COARSE-3PC": "#CC79A7", "RePaRe": "#E69F00"
+}
+METHOD_MARKER = dict(zip(METHOD_ORDER, ["o", "s", "^", "v"]))
 
 # --- columns ---------------------------------------------------------------------------
 COLUMN_LABEL = {
@@ -55,8 +44,6 @@ COLUMN_LABEL = {
     "density": "density",
     "noise": "noise",
     "method": "method",
-    "lambda_pen": "λ",
-    "targets_per_interv": "targets per intervention",
     "ari": "ARI ↑",
     "fscore": "F-score ↑",
     "precision": "precision ↑",
@@ -65,8 +52,6 @@ COLUMN_LABEL = {
 }
 UNIT_RANGE = {"ari", "fscore", "precision", "recall"}  # y in [0, 1]
 LOG_Y = {"runtime_sec"}
-ORDINAL_COLUMNS = {"density", "num_nodes", "samp_size"}  # hue drawn from the ramp
-
 
 def label(column: str) -> str:
     return COLUMN_LABEL.get(column, column)
@@ -74,24 +59,16 @@ def label(column: str) -> str:
 
 def apply_style() -> None:
     """Seaborn paper context at the suite's font scale, leaving matplotlib's default
-    sans-serif text and default mathtext for the 10^k / 2^k ticks. No usetex: must render
+    sans-serif text and default mathtext for the 10^k ticks. No usetex: must render
     without TeX."""
-    sns.set_theme(style="ticks", context="paper", font_scale=2.3, palette=CATEGORICAL)
-
-
-def ordinal_palette(n: int) -> list:
-    """`n` colours sampled from the teal → gold → KU red ramp (ordered hue levels)."""
-    return list(sns.blend_palette([TEAL, GOLD, KU_RED], n_colors=n))
+    sns.set_theme(style="ticks", context="paper", font_scale=2.3, palette=OKABE_ITO)
 
 
 def hue_palette(column: str, levels: list):
-    """Palette for a hue column: fixed method colours, the ramp for ordinal columns,
-    the categorical list otherwise."""
+    """Okabe–Ito method colours for `method`, mako for every other hue."""
     if column == "method":
         return {m: METHOD_COLOR[m] for m in levels}
-    if column in ORDINAL_COLUMNS:
-        return ordinal_palette(len(levels))
-    return CATEGORICAL[: len(levels)]
+    return sns.color_palette("mako", len(levels))
 
 
 def hue_markers(column: str, levels: list):
@@ -118,7 +95,6 @@ def format_axis(axis, column: str, values=None) -> None:
     samp_size / runtime_sec: decades only (10^k), minor ticks unlabeled, limits widened
       to the enclosing decades when fewer than two decade ticks would show.
     num_nodes: ticks at the grid values, plain integers, no minor ticks.
-    lambda_pen: base-2 decades (2^k).
     """
     if column == "num_nodes":
         if values is None:
@@ -128,28 +104,23 @@ def format_axis(axis, column: str, values=None) -> None:
         axis.set_minor_locator(NullLocator())
         axis.set_minor_formatter(NullFormatter())
         return
-    base = 2 if column == "lambda_pen" else 10
-    if base == 10:
-        # Decades come from the data, not the padded view: the few percent of margin past
-        # the last point would otherwise pull in a whole empty decade (n=1000 -> 10^4).
-        lo, hi = axis.get_data_interval()
-        if not (np.isfinite(lo) and np.isfinite(hi) and lo > 0 and hi > 0):
-            lo, hi = axis.get_view_interval()
-        lo_dec, hi_dec = math.floor(math.log10(lo)), math.ceil(math.log10(hi))
-        if hi_dec - lo_dec < 1:
-            hi_dec = lo_dec + 1
-        # Widen only outward, and against the *view* interval, not the data: a grid whose
-        # endpoint is a power of ten (n=1000) would otherwise lose its autoscale margin and
-        # leave the last marker half-clipped on the spine.
-        vlo, vhi = axis.get_view_interval()
-        set_lim = axis.axes.set_xlim if axis.axis_name == "x" else axis.axes.set_ylim
-        set_lim(min(vlo, 10.0**lo_dec), max(vhi, 10.0**hi_dec))
-    axis.set_major_locator(LogLocator(base=base, subs=(1.0,), numticks=20))
-    axis.set_major_formatter(LogFormatterSciNotation(base=base, labelOnlyBase=True))
-    if base == 10:
-        axis.set_minor_locator(LogLocator(base=base, subs=np.arange(2, base), numticks=20))
-    else:
-        axis.set_minor_locator(NullLocator())
+    # Decades come from the data, not the padded view: the few percent of margin past
+    # the last point would otherwise pull in a whole empty decade (n=1000 -> 10^4).
+    lo, hi = axis.get_data_interval()
+    if not (np.isfinite(lo) and np.isfinite(hi) and lo > 0 and hi > 0):
+        lo, hi = axis.get_view_interval()
+    lo_dec, hi_dec = math.floor(math.log10(lo)), math.ceil(math.log10(hi))
+    if hi_dec - lo_dec < 1:
+        hi_dec = lo_dec + 1
+    # Widen only outward, and against the *view* interval, not the data: a grid whose
+    # endpoint is a power of ten (n=1000) would otherwise lose its autoscale margin and
+    # leave the last marker half-clipped on the spine.
+    vlo, vhi = axis.get_view_interval()
+    set_lim = axis.axes.set_xlim if axis.axis_name == "x" else axis.axes.set_ylim
+    set_lim(min(vlo, 10.0**lo_dec), max(vhi, 10.0**hi_dec))
+    axis.set_major_locator(LogLocator(base=10, subs=(1.0,), numticks=20))
+    axis.set_major_formatter(LogFormatterSciNotation(base=10, labelOnlyBase=True))
+    axis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10), numticks=20))
     axis.set_minor_formatter(NullFormatter())
 
 
@@ -164,9 +135,6 @@ def style_axes(ax, x, y, *, values=None, xlabel=True, ylabel=True) -> None:
     if x in ("samp_size", "num_nodes"):
         ax.set_xscale("log")
         format_axis(ax.xaxis, x, values=values)
-    elif x == "lambda_pen":
-        ax.set_xscale("log", base=2)
-        format_axis(ax.xaxis, x)
     if y in LOG_Y:
         ax.set_yscale("log")
         format_axis(ax.yaxis, y)

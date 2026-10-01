@@ -6,6 +6,8 @@ dataset, ground truth and baseline calls, plus COARSE, and every method run on
 both intervention regimes (grouped: obs + rgb + pol; ungrouped: obs +
 single-variable experiments). One α grid (`ALPHAS`) is shared by every
 α-tuned method: COARSE's CV / oracle, RePaRe (× β) and UT-IGSP (× α_inv).
+Edge metrics are taken against the true coarse graph G/Π; the atomic baselines are
+projected onto Π first (no ARI for them).
 No model pickles are persisted — per-fit outputs are metrics.csv /
 *_params.json / *_dag.png, and the aggregator works from JSON without
 importing `repare`.
@@ -52,6 +54,9 @@ PREP_FILES = {
     "singleenvdata": BASE + "preprocessed/singleenvdata.pkl",
 }
 
+# Imported by every fit script; an explicit input because Snakemake hashes only `script:`.
+CC_COMMON = "workflow/scripts/_causalchamber_common.py"
+
 CC_MODES = ["grouped", "ungrouped"]
 # Methods with a hyperparameter grid emit an oracle row; GIES / GnIES do not.
 CC_METHOD_SELECTIONS = {
@@ -92,6 +97,7 @@ rule causalchamber_prepare:
 rule causalchamber_coarse:
     input:
         **PREP_FILES,
+        common=CC_COMMON,
     output:
         **cc_outputs_for("coarse", CC_METHOD_SELECTIONS["coarse"]),
     params:
@@ -112,6 +118,7 @@ rule causalchamber_coarse:
 rule causalchamber_repare:
     input:
         **PREP_FILES,
+        common=CC_COMMON,
     output:
         **cc_outputs_for("repare", CC_METHOD_SELECTIONS["repare"]),
     params:
@@ -131,6 +138,7 @@ rule causalchamber_repare:
 rule causalchamber_gies:
     input:
         **PREP_FILES,
+        common=CC_COMMON,
     output:
         **cc_outputs_for("gies", CC_METHOD_SELECTIONS["gies"]),
     params:
@@ -142,6 +150,7 @@ rule causalchamber_gies:
 rule causalchamber_gnies:
     input:
         **PREP_FILES,
+        common=CC_COMMON,
     output:
         **cc_outputs_for("gnies", CC_METHOD_SELECTIONS["gnies"]),
     params:
@@ -154,6 +163,7 @@ rule causalchamber_gnies:
 rule causalchamber_utigsp:
     input:
         **PREP_FILES,
+        common=CC_COMMON,
     output:
         **cc_outputs_for("utigsp", CC_METHOD_SELECTIONS["utigsp"]),
     params:
@@ -203,7 +213,7 @@ rule causalchamber_aggregate:
 
 
 # ---------------------------------------------------------------------------
-# Top-level entry point — mirrors the `lambda_all` / `l2_all` convention.
+# Top-level entry point.
 # ---------------------------------------------------------------------------
 
 cc_outputs = [

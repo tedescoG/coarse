@@ -1,6 +1,6 @@
 # Oracle-partition fits: COARSEOracle (plain / kPC) and RePaRe with the true partition
-# injected. Only ever on Gaussian single-target data (ORACLE_DATA). λ is a path wildcard
-# because lambda.smk sweeps it; every other consumer expands lambda_pen=[LAMBDA_PEN].
+# injected, on single-target data (ORACLE_DATA). noise.smk sweeps the noise wildcard; λ stays
+# a path wildcard so existing cells keep their paths (always LAMBDA_PEN).
 
 
 rule fit_oracle:
@@ -10,6 +10,8 @@ rule fit_oracle:
         temp(ORACLE + "model.pkl"),
     wildcard_constraints:
         method="coarse|kpc1|kpc3",
+    resources:
+        mem_mb=cell_mem_mb,
     params:
         lambda_pen=lambda w: float(w.lambda_pen),
         intervention_type=INTERVENTION_TYPE,
@@ -25,6 +27,8 @@ rule fit_oracle_repare:
         temp(ORACLE + "model.pkl"),
     wildcard_constraints:
         method="repare",
+    resources:
+        mem_mb=cell_mem_mb,
     params:
         beta=1e-4,
         intervention_type=INTERVENTION_TYPE,
@@ -40,6 +44,8 @@ rule evaluate_oracle:
         ORACLE + "metrics.csv",
     wildcard_constraints:
         method="coarse|kpc1|kpc3|repare",
+    resources:
+        mem_mb=cell_mem_mb,
     params:
         method_label=lambda w: ORACLE_LABELS[w.method],
         # RePaRe has no penalty; the column is kept non-NaN for CSV consistency.

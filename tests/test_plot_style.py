@@ -10,6 +10,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
+import seaborn as sns
 from matplotlib.ticker import NullFormatter
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "src" / "expt" / "workflow" / "scripts"
@@ -27,13 +28,10 @@ def _visible_labels(axis):
     ]
 
 
-def test_palette_anchors_on_thesis_colours():
-    assert ps.CATEGORICAL[0] == "#901A1E" and ps.CATEGORICAL[1] == "#0A5963"
-    ramp = ps.ordinal_palette(3)
-    assert len(ramp) == 3
-    assert matplotlib.colors.to_hex(ramp[0]).upper() == "#0A5963"
-    assert matplotlib.colors.to_hex(ramp[-1]).upper() == "#901A1E"
-    assert ps.METHOD_COLOR["COARSE"] == "#901A1E"
+def test_method_hue_uses_okabe_ito_and_other_hues_use_mako():
+    assert ps.hue_palette("method", ["COARSE", "RePaRe"]) == {"COARSE": "#0072B2", "RePaRe": "#E69F00"}
+    assert set(ps.METHOD_COLOR.values()) <= set(ps.OKABE_ITO)
+    assert ps.hue_palette("density", [0.2, 0.5, 0.8]) == sns.color_palette("mako", 3)
 
 
 def test_metric_labels_use_short_names_with_arrows():
@@ -72,9 +70,9 @@ def test_place_legend_puts_a_single_panel_legend_inside_the_axes():
 
 
 def test_display_methods_maps_and_rejects_unknown():
-    df = pd.DataFrame({"method": ["COARSE-oracle", "kPC-k1-oracle", "kPC-k3-oracle", "RePaRe-oracle", "COARSE-CV"]})
+    df = pd.DataFrame({"method": ["COARSE", "COARSE-oracle", "kPC-k1-oracle", "RePaRe-oracle"]})
     out = ps.display_methods(df)
-    assert out["method"].tolist() == ["COARSE", "COARSE-1PC", "COARSE-3PC", "RePaRe", "COARSE-CV"]
+    assert out["method"].tolist() == ["COARSE", "COARSE", "COARSE-1PC", "RePaRe"]
     with pytest.raises(ValueError):
         ps.display_methods(pd.DataFrame({"method": ["mystery"]}))
 
@@ -97,15 +95,6 @@ def test_num_nodes_axis_labels_grid_values():
     ps.format_axis(ax.xaxis, "num_nodes", values=[10, 20, 500])
     assert _visible_labels(ax.xaxis) == ["10", "20", "500"]
     assert isinstance(ax.xaxis.get_minor_formatter(), NullFormatter)
-    plt.close(fig)
-
-
-def test_lambda_axis_labels_powers_of_two():
-    fig, ax = plt.subplots()
-    ax.plot([0.125, 8.0], [1, 2])
-    ax.set_xscale("log", base=2)
-    ps.format_axis(ax.xaxis, "lambda_pen")
-    assert _visible_labels(ax.xaxis)[0] == "$\\mathdefault{2^{-3}}$"
     plt.close(fig)
 
 

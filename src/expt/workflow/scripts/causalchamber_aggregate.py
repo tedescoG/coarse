@@ -14,16 +14,9 @@ reconstructs DAGs via `dag_from_labeled_parts` — no model pickles, no
 `snakemake.params.method_selections` (GIES / GnIES have no grid, hence no
 oracle row).
 
-Column semantics (see `_causalchamber_common.all_edge_metrics`):
-  - `metric_type` + `precision/recall/f1`: the method's native metric as in
-    RePaRe's Table 1 (partition-level for COARSE/RePaRe, directed atomic
-    edges for GIES/UT-IGSP, skeleton for GnIES).
-  - `dir_*` / `skel_*`: the same directed / skeleton block-collapsed metrics
-    for every method — the cross-method comparison columns.
-  - `runtime_sec`: the selected single fit (COARSE: the CV refit only);
-    `search_runtime_sec`: the whole grid / CV loop.
-  - `score_native` is NOT comparable across methods (different objectives
-    and sign conventions).
+Edge-metric columns are `_causalchamber_common.METRIC_KEYS`; `runtime_sec` is the selected
+single fit, `search_runtime_sec` the whole grid / CV loop; `score_native` is not comparable
+across methods.
 """
 
 import json
@@ -37,23 +30,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from _causalchamber_common import dag_from_labeled_parts, draw_dag
+from _causalchamber_common import (
+    METHOD_LABEL,
+    METRIC_KEYS,
+    dag_from_labeled_parts,
+    draw_dag,
+)
 
 
-METHOD_LABEL = {
-    "coarse": "COARSE",
-    "repare": "RePaRe",
-    "gies": "GIES",
-    "gnies": "GnIES",
-    "utigsp": "UT-IGSP",
-}
 SECOND_HP_SYMBOL = {"lambda": "λ", "beta": "β", "alpha_inv": "α_inv", "": ""}
 
 SUMMARY_COLUMNS = [
-    "method", "mode", "selection", "metric_type", "ari",
-    "precision", "recall", "f1",
-    "dir_precision", "dir_recall", "dir_f1",
-    "skel_precision", "skel_recall", "skel_f1",
+    "method", "mode", "selection", "ari", *METRIC_KEYS,
     "runtime_sec", "search_runtime_sec", "score_native",
     "alpha", "second_hp", "second_hp_name", "num_parts", "num_edges",
 ]
@@ -113,17 +101,8 @@ def main():
             "method": METHOD_LABEL[method],
             "mode": mode,
             "selection": sel,
-            "metric_type": p["metric_type"],
             "ari": p["ari"],
-            "precision": p["precision"],
-            "recall": p["recall"],
-            "f1": p["f1"],
-            "dir_precision": p["dir_precision"],
-            "dir_recall": p["dir_recall"],
-            "dir_f1": p["dir_f1"],
-            "skel_precision": p["skel_precision"],
-            "skel_recall": p["skel_recall"],
-            "skel_f1": p["skel_f1"],
+            **{key: p[key] for key in METRIC_KEYS},
             "runtime_sec": p["fit_time"],
             "search_runtime_sec": p["search_runtime_sec"],
             "score_native": p["score"],
@@ -152,7 +131,7 @@ def main():
         title = (
             f"{METHOD_LABEL[method]} (grouped, score-selected)\n"
             f"{_hp_string(p, method, 'score')}, "
-            f"{ari_str}{p['metric_type']} F1={p['f1']:.3f}, "
+            f"{ari_str}F1 dir={p['atom_dir_f1']:.3f}, skel={p['atom_skel_f1']:.3f}, "
             f"runtime={p['fit_time']:.2f}s"
         )
         draw_dag(dag, feature_cols, ax, title=title)
@@ -169,10 +148,9 @@ def main():
         p = params_by_cell[(method, mode, sel)]
         lines.append(f"=== {METHOD_LABEL[method]} ({mode}, {sel}-selected) ===")
         lines.append(
-            f"  {_hp_string(p, method, sel)}, metric_type={p['metric_type']}, "
-            f"ari={_fmt(p['ari'], '.4f')}, precision={p['precision']:.4f}, "
-            f"recall={p['recall']:.4f}, f1={p['f1']:.4f}, "
-            f"dir_f1={p['dir_f1']:.4f}, skel_f1={p['skel_f1']:.4f}, "
+            f"  {_hp_string(p, method, sel)}, ari={_fmt(p['ari'], '.4f')}, "
+            + ", ".join(f"{key}={p[key]:.4f}" for key in METRIC_KEYS)
+            + ", "
             f"runtime_sec={p['fit_time']:.3f}, "
             f"search_runtime_sec={p['search_runtime_sec']:.3f}, "
             f"num_parts={p['num_parts']}, num_edges={p['num_edges']}"

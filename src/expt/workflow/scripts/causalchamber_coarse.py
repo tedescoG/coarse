@@ -18,9 +18,7 @@ Stage-1 test is `snakemake.params.refine_test` (the rule passes
 `"gaussian_lrt"`, the mean + variance LRT that RePaRe's `assume="gaussian"`
 path runs).
 
-Score convention: COARSE's `model.score` is the Eq. 21 partition BIC summed
-over all environments; **higher is better**. Not comparable across methods —
-cross-method comparison uses ARI / block-edge precision / recall / F1.
+`model.score` (partition BIC, higher is better) is not comparable across methods.
 """
 
 import json
@@ -46,8 +44,8 @@ from _causalchamber_common import (
 )
 
 
-def _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph, num_atoms):
-    est_labels = partition_labels(model.dag.nodes, num_atoms)
+def _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph, true_blocks):
+    est_labels = partition_labels(model.dag.nodes, len(true_labels))
     return {
         "alpha": float(alpha),
         "lambda": float(lambda_pen),
@@ -58,7 +56,7 @@ def _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph,
         "fit_time": float(fit_time),
         "num_parts": int(model.dag.number_of_nodes()),
         "num_edges": int(model.dag.number_of_edges()),
-        **all_edge_metrics(model.dag, true_graph, native="partition"),
+        **all_edge_metrics(model.dag, true_graph, true_blocks),
     }
 
 
@@ -71,8 +69,8 @@ def main():
         group_targets = pickle.load(f)
     with open(snakemake.input.truegraph, "rb") as f:
         true_graph = pickle.load(f)
-    with open(snakemake.input.truelabels, "rb") as f:
-        true_labels = pickle.load(f)
+    with open(snakemake.input.truedagfull, "rb") as f:
+        true_dag_full = pickle.load(f)
     with open(snakemake.input.nametoidx, "rb") as f:
         name_to_idx = pickle.load(f)
     with open(snakemake.input.singleenvlabels, "rb") as f:
@@ -88,16 +86,7 @@ def main():
 
     targets = select_targets(mode, group_targets, single_env_labels, name_to_idx)
     data_dict = build_block_data_dict(blocks, targets)
-    num_atoms = len(partition_parts)
-
-    # `true_labels` was computed under the GROUPED ground-truth partition.
-    # The ungrouped run intervenes on single variables, which generally induces
-    # a finer ground-truth partition — recompute it here so ARI is comparable
-    # to RePaRe's ungrouped numbers.
-    if mode == "ungrouped":
-        with open(snakemake.input.truedagfull, "rb") as f:
-            true_dag_full = pickle.load(f)
-        _, true_labels = ground_truth_partition(targets, partition_parts, true_dag_full)
+    true_blocks, true_labels = ground_truth_partition(targets, partition_parts, true_dag_full)
 
     # --- α grid at fixed λ → metrics.csv + oracle row ---------------------------
     records = []
@@ -109,7 +98,7 @@ def main():
         )
         fit_time = time.perf_counter() - start
         records.append(
-            _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph, num_atoms)
+            _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph, true_blocks)
         )
         dags[float(alpha)] = model.dag
 
@@ -132,7 +121,7 @@ def main():
     )
     score_row = _row_from_model(
         cv_model, cv_model.best_alpha, lambda_pen, cv_model.fit_runtime_sec,
-        true_labels, true_graph, num_atoms,
+        true_labels, true_graph, true_blocks,
     )
     score_row["search_runtime_sec"] = float(cv_model.cv_runtime_sec)
     score_dag = cv_model.dag

@@ -1,17 +1,8 @@
 """Shared helpers for the CausalChamber experiment scripts.
 
-Snakemake's `script:` directive adds the script's directory to sys.path before
-execution, so sibling imports like `from _causalchamber_common import ...` work
-without extra wiring. The leading underscore signals "module-local; do not
-import from outside `src/expt/workflow/scripts/`."
-
-All helpers operate on `nx.DiGraph` objects whose nodes are `tuple[int, ...]`
-(sorted indices into the kept-feature list) — the `coarse.COARSE.dag`
-convention (see `_materialize_dag` in `coarse/coarse.py`), which every method
-in the experiment is coerced to before evaluation. Atomic-output baselines
-(GIES / GnIES / UT-IGSP) are coerced through `adjacency_to_singleton_dag`, whose
-singleton blocks make `partition_edge_metrics` collapse to RePaRe's plain
-directed-edge metric and `skeleton_edge_metrics` to its skeleton metric.
+Graphs are `nx.DiGraph`s whose nodes are sorted atom-index tuples (the `COARSE.dag`
+convention). Atomic baselines (GIES / GnIES / UT-IGSP) are scored after projection onto the
+true coarsening Π (`quotient_graph`), so every method is compared at the coarse level.
 """
 from __future__ import annotations
 
@@ -27,7 +18,7 @@ import numpy as np
 
 from coarse.partition import infer_partition
 
-from _common import block_dag_prf, partition_labels
+from _common import partition_labels
 
 
 def build_block_data_dict(blocks: dict, targets: dict[str, set[int]]) -> dict:
@@ -41,15 +32,6 @@ def build_block_data_dict(blocks: dict, targets: dict[str, set[int]]) -> dict:
     return data
 
 
-def partition_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph) -> dict:
-    """Precision/recall/F1 of `model_dag`'s edges against the ground-truth partition graph:
-    `true_graph`'s atomic edges collapsed onto `model_dag`'s blocks over forward node pairs.
-    Delegates to `_common.block_dag_prf` so the synthetic and chamber halves share one
-    definition of the metric.
-    """
-    precision, recall, f1 = block_dag_prf(model_dag, true_graph)
-    return {"precision": float(precision), "recall": float(recall), "f1": float(f1)}
-
 
 def _prf(tp: int, n_est: int, n_true: int) -> dict:
     precision = tp / n_est if n_est else 1.0
@@ -58,103 +40,47 @@ def _prf(tp: int, n_est: int, n_true: int) -> dict:
     return {"precision": precision, "recall": recall, "f1": f1}
 
 
-def directed_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph) -> dict:
-    """Order-independent directed block-edge precision/recall/F1.
 
-    Unlike `partition_edge_metrics`, which only inspects block pairs that go
-    *forward* in node insertion order (valid for a topologically sorted
-    partition DAG, but it silently drops every true edge running backward in
-    that order), this checks every ordered pair `(pa, ch)`, `pa != ch`: a true
-    block edge exists iff some atomic `u -> v`, `u ∈ pa`, `v ∈ ch`, is in
-    `true_graph`. For singleton blocks this is exactly RePaRe's
-    `graph_edge_metrics` (the GIES / UT-IGSP native metric): every atomic true
-    edge is in the recall denominator and every estimated edge is matched
-    regardless of index order.
-    """
-    nodes = list(model_dag.nodes)
-    true_edges = {
-        (pa, ch)
-        for pa in nodes
-        for ch in nodes
-        if pa != ch and any(true_graph.has_edge(u, v) for u in pa for v in ch)
-    }
-    est_edges = set(model_dag.edges)
-    return _prf(len(est_edges & true_edges), len(est_edges), len(true_edges))
+def quotient_graph(atom_edges, blocks) -> nx.DiGraph:
+    """Atomic edges collapsed onto `blocks` (tuple nodes): A → B iff some u → v has u ∈ A,
+    v ∈ B, A ≠ B. Every ordered pair counts, so the quotient may be cyclic."""
+    nodes = [tuple(sorted(int(u) for u in block)) for block in blocks]
+    block_of = {u: node for node in nodes for u in node}
+    graph = nx.DiGraph()
+    graph.add_nodes_from(nodes)
+    for u, v in atom_edges:
+        a, b = block_of[int(u)], block_of[int(v)]
+        if a != b:
+            graph.add_edge(a, b)
+    return graph
 
 
-def skeleton_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph) -> dict:
-    """Orientation-free counterpart of `partition_edge_metrics`.
-
-    Estimated and true edges are collapsed to unordered block pairs
-    `frozenset({pa, ch})`; a true pair exists iff some atomic edge crosses the
-    two blocks in either direction. For singleton blocks this is exactly
-    RePaRe's `skeleton_metrics` (GnIES' native metric).
-    """
-    nodes = list(model_dag.nodes)
-    true_pairs = set()
-    for i, a in enumerate(nodes[:-1]):
-        for b in nodes[i + 1 :]:
-            if any(
-                true_graph.has_edge(u, v) or true_graph.has_edge(v, u)
-                for u in a
-                for v in b
-            ):
-                true_pairs.add(frozenset((a, b)))
-    est_pairs = {frozenset(edge) for edge in model_dag.edges}
-    return _prf(len(est_pairs & true_pairs), len(est_pairs), len(true_pairs))
-
-
-NATIVE_METRIC_TYPES = ("partition", "edges", "skeleton")
-
-
-def all_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph, native: str) -> dict:
-    """Directed + skeleton block-collapsed metrics for one estimate.
-
-    `native` is RePaRe's `metric_type` label for the method and selects which
-    of RePaRe's metric functions fills the plain `precision` / `recall` / `f1`
-    keys, so the summary reproduces RePaRe's Table 1 numbers:
-        "partition" (COARSE / RePaRe) → `partition_edge_metrics` (forward pairs only)
-        "edges"     (GIES / UT-IGSP)  → `directed_edge_metrics` (== `graph_edge_metrics`)
-        "skeleton"  (GnIES)           → `skeleton_edge_metrics` (== `skeleton_metrics`)
-    `dir_*` / `skel_*` are the order-independent directed and skeleton
-    collapses for every method — the cross-method comparison columns. For
-    partition methods `dir_*` can be below the native triple when the
-    estimated block order runs against a true edge (forward-only never
-    counts that edge as missed; the all-pairs collapse does).
-    """
-    if native not in NATIVE_METRIC_TYPES:
-        raise ValueError(f"native must be one of {NATIVE_METRIC_TYPES}, got {native!r}")
-    directed = directed_edge_metrics(model_dag, true_graph)
-    skeleton = skeleton_edge_metrics(model_dag, true_graph)
-    native_triple = {
-        "partition": lambda: partition_edge_metrics(model_dag, true_graph),
-        "edges": lambda: directed,
-        "skeleton": lambda: skeleton,
-    }[native]()
-    out = {"metric_type": native}
-    out.update({f"dir_{k}": v for k, v in directed.items()})
-    out.update({f"skel_{k}": v for k, v in skeleton.items()})
-    out.update(native_triple)
+def _edge_prf(est_edges, true_edges, prefix: str) -> dict:
+    out = {}
+    est, true = set(est_edges), set(true_edges)
+    for kind, (e, t) in {
+        "dir": (est, true),
+        "skel": ({frozenset(x) for x in est}, {frozenset(x) for x in true}),
+    }.items():
+        out.update({f"{prefix}_{kind}_{k}": v for k, v in _prf(len(e & t), len(e), len(t)).items()})
     return out
 
 
-def adjacency_to_singleton_dag(adj: np.ndarray) -> nx.DiGraph:
-    """Coerce a p×p adjacency matrix to the block-DAG convention with
-    singleton blocks `(i,)`.
+def _atom_pairs(block_dag: nx.DiGraph) -> set:
+    return {(u, v) for a, b in block_dag.edges for u in a for v in b}
 
-    Every nonzero `adj[i, j]` becomes the edge `(i,) -> (j,)`. GIES / GnIES
-    return I-essential graphs in which an undirected edge is stored as both
-    `adj[i, j]` and `adj[j, i]`; both directed edges are kept, matching how
-    RePaRe's wrappers score them (so one of the two is a false positive under
-    the directed metric — use `skeleton_edge_metrics` for the orientation-free
-    view).
-    """
-    adj = np.asarray(adj)
-    dag = nx.DiGraph()
-    dag.add_nodes_from((i,) for i in range(adj.shape[0]))
-    for i, j in zip(*np.nonzero(adj)):
-        dag.add_edge((int(i),), (int(j),))
-    return dag
+
+def all_edge_metrics(model_dag: nx.DiGraph, true_graph: nx.DiGraph, true_blocks) -> dict:
+    """Direction (`dir`) and skeleton (`skel`) P/R/F1 of a block graph.
+    `blk_*`: against the atomic truth collapsed onto the estimate's blocks.
+    `atom_*`: estimate and true coarse graph G/Π both expanded to atom pairs."""
+    model_dag = quotient_graph(_atom_pairs(model_dag), model_dag.nodes)  # sorted-tuple nodes
+    blk = quotient_graph(true_graph.edges, model_dag.nodes)
+    true_coarse = quotient_graph(true_graph.edges, true_blocks)
+    return {
+        **_edge_prf(model_dag.edges, blk.edges, "blk"),
+        **_edge_prf(_atom_pairs(model_dag), _atom_pairs(true_coarse), "atom"),
+    }
 
 
 def gaussian_bic_score(data: np.ndarray, graph: nx.DiGraph) -> float:
@@ -348,10 +274,11 @@ def ground_truth_partition(target_dict, parts, true_dag_full: nx.DiGraph):
 
 
 def select_oracle_row(records: list[dict]) -> dict:
-    """Ground-truth pick over the whole grid: max ARI, then F1, then
-    precision, then score (upper bound on what any selection could reach)."""
+    """Ground-truth pick over the whole grid: max ARI, then atom direction F1, then its
+    precision, then score."""
     return max(
-        records, key=lambda r: (r["ari"], r["f1"], r["precision"], r["score"])
+        records,
+        key=lambda r: (r["ari"], r["atom_dir_f1"], r["atom_dir_precision"], r["score"]),
     )
 
 
@@ -363,19 +290,24 @@ def select_utigsp_score_row(records: list[dict]) -> dict:
 
 
 def select_utigsp_oracle_row(records: list[dict]) -> dict:
-    """UT-IGSP ground-truth pick: max `f1 * precision`, ties to the first cell
-    in grid order — RePaRe's `(df["f1"] * df["precision"]).idxmax()`."""
+    """UT-IGSP ground-truth pick: max atom direction `f1 * precision` (RePaRe's rule), ties
+    to the first cell in grid order."""
     return max(
         records,
-        key=lambda r: (r["f1"] * r["precision"], -r["alpha_ci"], -r["alpha_inv"]),
+        key=lambda r: (
+            r["atom_dir_f1"] * r["atom_dir_precision"], -r["alpha_ci"], -r["alpha_inv"]
+        ),
     )
 
 
+METRIC_KEYS = tuple(
+    f"{ref}_{kind}_{stat}"
+    for ref in ("blk", "atom")
+    for kind in ("dir", "skel")
+    for stat in ("precision", "recall", "f1")
+)
 PAYLOAD_KEYS = (
-    "alpha", "second_hp", "second_hp_name", "metric_type", "ari",
-    "precision", "recall", "f1",
-    "dir_precision", "dir_recall", "dir_f1",
-    "skel_precision", "skel_recall", "skel_f1",
+    "alpha", "second_hp", "second_hp_name", "ari", *METRIC_KEYS,
     "score", "fit_time", "search_runtime_sec", "num_parts", "num_edges",
 )
 
@@ -392,3 +324,12 @@ def params_payload(row: dict, parts, edges, **extra) -> dict:
     payload["parts"] = parts
     payload["edges"] = edges
     return payload
+
+
+METHOD_LABEL = {
+    "coarse": "COARSE",
+    "repare": "RePaRe",
+    "gies": "GIES",
+    "gnies": "GnIES",
+    "utigsp": "UT-IGSP",
+}

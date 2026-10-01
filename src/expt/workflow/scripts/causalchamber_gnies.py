@@ -9,10 +9,8 @@ comparable to RePaRe's Table 1:
   (seed = position in the env list; RePaRe used 2000);
 - forward-only outer and inner phases, `ges_iterate=False`.
 
-GnIES returns the I-CPDAG; its native metric is the **skeleton**
-precision / recall (`metric_type="skeleton"`, as in RePaRe) — the directed
-view, with undirected edges counted as two directed ones, lives in `dir_*`.
-No hyperparameter grid (BIC penalty `0.5·log N` by default), so only the
+GnIES returns the I-CPDAG; undirected edges are kept as two directed edges when
+projected onto the true coarsening. No hyperparameter grid (BIC penalty `0.5·log N` by default), so only the
 score-selected artifacts are written; `fit_time == search_runtime_sec`.
 """
 
@@ -22,15 +20,18 @@ import time
 from pathlib import Path
 
 import gnies
+import numpy as np
 import pandas as pd
 
 from _causalchamber_common import (
-    adjacency_to_singleton_dag,
     all_edge_metrics,
     baseline_env_lists,
+    ground_truth_partition,
     labeled_summary,
     params_payload,
+    quotient_graph,
     save_dag_plot,
+    select_targets,
     subsample_rows,
 )
 
@@ -42,6 +43,10 @@ def main():
         group_targets = pickle.load(f)
     with open(snakemake.input.truegraph, "rb") as f:
         true_graph = pickle.load(f)
+    with open(snakemake.input.partition, "rb") as f:
+        partition_parts = pickle.load(f)
+    with open(snakemake.input.truedagfull, "rb") as f:
+        true_dag_full = pickle.load(f)
     with open(snakemake.input.nametoidx, "rb") as f:
         name_to_idx = pickle.load(f)
     with open(snakemake.input.singleenvlabels, "rb") as f:
@@ -50,6 +55,8 @@ def main():
         feature_cols = json.load(f)["feature_cols"]
 
     mode = snakemake.params.mode
+    targets = select_targets(mode, group_targets, single_env_labels, name_to_idx)
+    true_blocks, _ = ground_truth_partition(targets, partition_parts, true_dag_full)
     max_rows = int(snakemake.params.max_rows)
     data_list, _, env_labels = baseline_env_lists(
         mode, blocks, group_targets, single_env_labels, name_to_idx
@@ -68,7 +75,7 @@ def main():
     )
     fit_time = time.perf_counter() - start
 
-    dag = adjacency_to_singleton_dag(adj)
+    dag = quotient_graph(zip(*np.nonzero(adj)), true_blocks)
     row = {
         "alpha": None,
         "second_hp": None,
@@ -79,7 +86,7 @@ def main():
         "search_runtime_sec": float(fit_time),
         "num_parts": int(dag.number_of_nodes()),
         "num_edges": int(dag.number_of_edges()),
-        **all_edge_metrics(dag, true_graph, native="skeleton"),
+        **all_edge_metrics(dag, true_graph, true_blocks),
     }
     pd.DataFrame([row]).to_csv(snakemake.output.metrics_csv, index=False)
 

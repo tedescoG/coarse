@@ -17,7 +17,7 @@ from _causalchamber_common import select_oracle_row  # noqa: E402
 def _row(alpha, lam, score, ari=0.0, f1=0.0, precision=0.0):
     return {
         "alpha": alpha, "lambda": lam, "score": score,
-        "ari": ari, "f1": f1, "precision": precision,
+        "ari": ari, "atom_dir_f1": f1, "atom_dir_precision": precision,
     }
 
 
@@ -37,25 +37,14 @@ import networkx as nx  # noqa: E402
 import numpy as np  # noqa: E402
 
 from _causalchamber_common import (  # noqa: E402
-    adjacency_to_singleton_dag,
     all_edge_metrics,
     baseline_env_lists,
-    directed_edge_metrics,
     gaussian_bic_score,
-    partition_edge_metrics,
+    quotient_graph,
     select_utigsp_oracle_row,
     select_utigsp_score_row,
-    skeleton_edge_metrics,
     subsample_rows,
 )
-
-
-def test_adjacency_to_singleton_dag_keeps_both_directions_of_undirected_edge():
-    # 0 -> 1 directed, 1 - 2 undirected (both entries set)
-    adj = np.array([[0, 1, 0], [0, 0, 1], [0, 1, 0]])
-    dag = adjacency_to_singleton_dag(adj)
-    assert set(dag.nodes) == {(0,), (1,), (2,)}
-    assert set(dag.edges) == {((0,), (1,)), ((1,), (2,)), ((2,), (1,))}
 
 
 def _true_chain():
@@ -65,72 +54,41 @@ def _true_chain():
     return g
 
 
-def test_skeleton_metrics_ignore_orientation_directed_metrics_do_not():
+def test_quotient_graph_keeps_both_directions_and_drops_within_block_edges():
+    # 0 -> 1 directed, 1 - 2 undirected (both entries set), 2 -> 3
+    adj = np.array([[0, 1, 0, 0], [0, 0, 1, 0], [0, 1, 0, 1], [0, 0, 0, 0]])
+    edges = list(zip(*np.nonzero(adj)))
+    singletons = quotient_graph(edges, [{0}, {1}, {2}, {3}])
+    assert set(singletons.edges) == {((0,), (1,)), ((1,), (2,)), ((2,), (1,)), ((2,), (3,))}
+    coarse = quotient_graph(edges, [frozenset({0}), frozenset({1, 2}), frozenset({3})])
+    assert set(coarse.nodes) == {(0,), (1, 2), (3,)}
+    assert set(coarse.edges) == {((0,), (1, 2)), ((1, 2), (3,))}
+
+
+def test_all_edge_metrics_on_a_partition_differing_from_the_truth():
+    truth = _true_chain()
+    true_blocks = [{0}, {1, 2}, {3}]
     est = nx.DiGraph()
-    est.add_nodes_from([(0,), (1,), (2, 3)])
-    est.add_edge((0,), (1,))
-    est.add_edge((2, 3), (1,))  # reversed relative to the truth 1 -> 2
-    truth = _true_chain()
-    directed = partition_edge_metrics(est, truth)
-    skeleton = skeleton_edge_metrics(est, truth)
-    assert directed["precision"] == 0.5
-    assert skeleton == {"precision": 1.0, "recall": 1.0, "f1": 1.0}
-
-
-def test_directed_metrics_are_index_order_independent_on_singletons():
-    # True 3 -> 0 runs backward in index order; the estimate recovers it plus 0 -> 1.
-    truth = nx.DiGraph()
-    truth.add_nodes_from(range(4))
-    truth.add_edges_from([(0, 1), (3, 0), (1, 2)])
-    est = adjacency_to_singleton_dag(
-        np.array([[0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [1, 0, 0, 0]])
-    )
-    # tp=2, |est|=2, |true|=3
-    assert directed_edge_metrics(est, truth) == {
-        "precision": 1.0, "recall": pytest.approx(2 / 3), "f1": pytest.approx(0.8),
-    }
-    # The forward-only partition collapse drops the backward edges.
-    forward_only = partition_edge_metrics(est, truth)
-    assert forward_only["precision"] == 0.5 and forward_only["recall"] == 0.5
-
-
-def test_skeleton_metrics_on_singletons():
-    est = adjacency_to_singleton_dag(
-        np.array([[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0]])
-    )  # 0 - 1 undirected, 3 -> 2 reversed
-    truth = _true_chain()
-    skel = skeleton_edge_metrics(est, truth)
-    # Pairs {0,1} and {2,3} are in the true skeleton; 1-2 is missed.
-    assert skel["precision"] == 1.0
-    assert skel["recall"] == pytest.approx(2 / 3)
-
-
-def test_all_edge_metrics_copies_native_triple():
-    est = nx.DiGraph()
-    est.add_nodes_from([(0,), (1,), (2,), (3,)])
-    est.add_edge((1,), (0,))
-    truth = _true_chain()
-    edges = all_edge_metrics(est, truth, native="edges")
-    skel = all_edge_metrics(est, truth, native="skeleton")
-    part = all_edge_metrics(est, truth, native="partition")
-    assert edges["metric_type"] == "edges"
-    assert (edges["precision"], edges["recall"]) == (edges["dir_precision"], edges["dir_recall"])
-    assert edges["dir_precision"] == 0.0 and edges["skel_precision"] == 1.0
-    assert skel["metric_type"] == "skeleton"
-    assert skel["precision"] == skel["skel_precision"] == 1.0
-    # Partition-native uses the forward-only collapse: the reversed estimate is a FP
-    # and the true 0 -> 1 pair drops out of the recall denominator.
-    assert part["metric_type"] == "partition"
-    assert part["precision"] == 0.0
-    assert part["recall"] == 0.0 and part["dir_recall"] == 0.0
-    with pytest.raises(ValueError):
-        all_edge_metrics(est, truth, native="cpdag")
+    est.add_nodes_from([(0, 1), (2,), (3,)])
+    est.add_edges_from([((0, 1), (2,)), ((3,), (2,))])
+    m = all_edge_metrics(est, truth, true_blocks)
+    # Truth on the estimate's blocks: (0,1)->(2,), (2,)->(3,).
+    assert (m["blk_dir_precision"], m["blk_dir_recall"]) == (0.5, 0.5)
+    assert (m["blk_skel_precision"], m["blk_skel_recall"]) == (1.0, 1.0)
+    # Atom pairs: estimate {02, 12, 32}; G/Π {01, 02, 13, 23}.
+    assert m["atom_dir_precision"] == pytest.approx(1 / 3)
+    assert m["atom_dir_recall"] == pytest.approx(1 / 4)
+    assert m["atom_skel_precision"] == pytest.approx(2 / 3)
+    assert m["atom_skel_recall"] == pytest.approx(1 / 2)
+    # Unsorted tuple nodes (RePaRe's convention) score the same.
+    unsorted = nx.relabel_nodes(est, {(0, 1): (1, 0)})
+    assert all_edge_metrics(unsorted, truth, true_blocks) == m
 
 
 def _ut_row(alpha_ci, alpha_inv, bic, f1=0.0, precision=0.0):
     return {
         "alpha_ci": alpha_ci, "alpha_inv": alpha_inv, "bic": bic,
-        "f1": f1, "precision": precision,
+        "atom_dir_f1": f1, "atom_dir_precision": precision,
     }
 
 
@@ -201,20 +159,8 @@ def test_gaussian_bic_prefers_true_parent_on_linear_data():
     assert gaussian_bic_score(data, nx.DiGraph()) == float("inf")
 
 
-from _common import block_dag_prf, partition_labels  # noqa: E402
+from _common import block_dag_prf  # noqa: E402
 from _causalchamber_common import build_block_data_dict  # noqa: E402
-
-
-def test_partition_edge_metrics_delegates_to_block_dag_prf():
-    est = nx.DiGraph()
-    est.add_nodes_from([(0,), (1,), (2, 3)])
-    est.add_edge((0,), (1,))
-    est.add_edge((2, 3), (1,))
-    truth = _true_chain()
-    precision, recall, f1 = block_dag_prf(est, truth)
-    assert partition_edge_metrics(est, truth) == {
-        "precision": precision, "recall": recall, "f1": f1,
-    }
 
 
 def test_block_dag_prf_counts_forward_block_edges():

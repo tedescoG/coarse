@@ -1,25 +1,41 @@
-# Noise-family robustness: COARSE on Gaussian / uniform / Laplace iSCM noise at p=10,
-# same (density × n) grid as synth.smk. The Gaussian cells *are* synth.smk's COARSE cells
-# (same PIPELINE paths), so nothing is fit twice.
-NOISE_IVNS = [5]
+# Noise-family robustness under the oracle partition: COARSEOracle on Gaussian / uniform /
+# Laplace / Student-t (ν = 3, 4) iSCM noise, er, ivn 5, density 0.2 (the scalability setting, so
+# its Gaussian datasets are shared), p ∈ NOISE_NODES, n ∈ NOISE_SAMP with n > p.
+NOISE_SAMP = sorted({100, 500, *SCAL_SAMP})
+NOISE_DIR = RESULTS + "noise/"
 
 
 rule collect_noise:
     input:
         cells(
-            PIPELINE + "metrics.csv",
+            ORACLE + "metrics.csv",
+            guard=identifiable,
             method=["coarse"],
             noise=NOISES,
-            targets_per_interv=["1"],
-            num_nodes=[10],
-            density=DENSITIES,
-            samp_size=SAMP_SIZES,
+            lambda_pen=[LAMBDA_PEN],
+            graph=["er"],
+            num_nodes=NOISE_NODES,
+            num_intervs=[5],
+            density=[0.2],
+            samp_size=NOISE_SAMP,
             seed=SEEDS,
         ),
     output:
-        "results/noise/{graph}_results_ivn={num_intervs}.csv",
+        NOISE_DIR + "results.csv",
     script:
         "../scripts/collect.py"
+
+
+rule summarize_noise:
+    input:
+        rules.collect_noise.output[0],
+    output:
+        NOISE_DIR + "summary.csv",
+    params:
+        by=["noise", "num_nodes", "samp_size"],
+        metrics=["fscore"],
+    script:
+        "../scripts/summarize.py"
 
 
 rule plot_noise:
@@ -27,26 +43,18 @@ rule plot_noise:
         rules.collect_noise.output[0],
         style=PLOT_STYLE,
     output:
-        ari="results/noise/{graph}_ari_ivn={num_intervs}.pdf",
-        fscore="results/noise/{graph}_fscore_ivn={num_intervs}.pdf",
+        **{f"p{p}": NOISE_DIR + f"fscore_p={p}.pdf" for p in NOISE_NODES},
     params:
         panels=[
             dict(
-                out="ari",
-                x="samp_size",
-                y="ari",
-                hue="noise",
-                hue_order=NOISES,
-                col="density",
-            ),
-            dict(
-                out="fscore",
+                out=f"p{p}",
+                filter={"num_nodes": p},
                 x="samp_size",
                 y="fscore",
                 hue="noise",
                 hue_order=NOISES,
-                col="density",
-            ),
+            )
+            for p in NOISE_NODES
         ],
     script:
         "../scripts/plot_panels.py"
@@ -54,9 +62,5 @@ rule plot_noise:
 
 rule noise_all:
     input:
-        expand(
-            "results/noise/{graph}_{metric}_ivn={num_intervs}.pdf",
-            graph=["er", "sf"],
-            metric=["ari", "fscore"],
-            num_intervs=NOISE_IVNS,
-        ),
+        rules.plot_noise.output,
+        rules.summarize_noise.output,

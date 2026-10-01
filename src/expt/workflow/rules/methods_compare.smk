@@ -1,16 +1,28 @@
-# Head-to-head under the oracle partition: COARSE vs 1PC-COARSE (kpc1) vs RePaRe. Each
-# receives the same oracle partition, so only the edge-recovery half is benchmarked.
-# Shared fits: the coarse/kpc1 cells are kpc.smk exp3's; the RePaRe arm and the SAMP_SIZES
-# values outside SCAL_SAMP (n = 2000, 5000, 20000, 50000) are new work.
-MC_METHODS = ["coarse", "kpc1", "repare"]
+# Head-to-head under the oracle partition: COARSE, COARSE-1PC, COARSE-3PC and RePaRe. Every
+# method receives the same oracle partition, so only edge recovery is compared (no ARI).
+MC_METHODS = ["coarse", "kpc1", "kpc3", "repare"]
 MC_NODES = [10, 20] if SMOKE else [10, 20, 50, 100]
-MC_METRICS = ["fscore", "precision", "recall", "runtime_sec"]
+MC_METRICS = ["fscore", "runtime_sec"]
+MC_DIR = RESULTS + "methods_compare/"
+MC_PANELS = [
+    dict(
+        out=f"er_p={p}_dens={d}_{m}",
+        filter={"num_nodes": p, "density": d},
+        x="samp_size",
+        y=m,
+        hue="method",
+    )
+    for p in MC_NODES
+    for d in DENSITIES
+    for m in MC_METRICS
+]
 
 
 rule collect_methods_compare:
     input:
         cells(
             ORACLE + "metrics.csv",
+            noise=["gaussian"],
             method=MC_METHODS,
             lambda_pen=[LAMBDA_PEN],
             graph=["er"],
@@ -21,28 +33,36 @@ rule collect_methods_compare:
             seed=SEEDS,
         ),
     output:
-        "results/methods_compare/results.csv",
+        MC_DIR + "results.csv",
     script:
         "../scripts/collect.py"
 
 
-# Filenames are parsed by plot_methods_compare.py to recover the filter keys.
+rule summarize_methods_compare:
+    input:
+        rules.collect_methods_compare.output[0],
+    output:
+        MC_DIR + "summary.csv",
+    params:
+        by=["method", "num_nodes", "density", "samp_size"],
+        metrics=["fscore", "precision", "recall", "runtime_sec"],
+    script:
+        "../scripts/summarize.py"
+
+
 rule plot_methods_compare:
     input:
         rules.collect_methods_compare.output[0],
         style=PLOT_STYLE,
     output:
-        expand(
-            "results/methods_compare/{graph}_p={p}_dens={d}_{metric}.pdf",
-            graph=["er"],
-            p=MC_NODES,
-            d=DENSITIES,
-            metric=MC_METRICS,
-        ),
+        **{panel["out"]: MC_DIR + panel["out"] + ".pdf" for panel in MC_PANELS},
+    params:
+        panels=MC_PANELS,
     script:
-        "../scripts/plot_methods_compare.py"
+        "../scripts/plot_panels.py"
 
 
 rule methods_compare_all:
     input:
         rules.plot_methods_compare.output,
+        rules.summarize_methods_compare.output,

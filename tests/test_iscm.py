@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy import stats
 
 warnings.filterwarnings("ignore", message="No module named 'rpy2'.*")
 
@@ -27,6 +28,11 @@ from sempler import ANM, LGANM  # noqa: E402
 from sempler.generators import dag_avg_deg  # noqa: E402
 
 P = 15
+HEAVY_TAILED = ("t3", "t4")  # infinite fourth moment: sample variances are not checked tightly
+
+
+def _t_df(family: str) -> int:
+    return int(family[1:])
 
 
 def _random_scm(seed, p=P, avg_deg=4):
@@ -71,23 +77,33 @@ def test_iscm_only_rescales(seed):
 
 @pytest.mark.parametrize("family", NOISE_FAMILIES)
 def test_noise_distribution_moments(family):
+    """Sampled mean matches; light-tailed families match the variance, Student-t families
+    match the quartiles of the variance-scaled t distribution."""
     np.random.seed(0)
-    x = noise_distribution(family, mean=1.5, var=0.7)(200_000)
-    assert x.mean() == pytest.approx(1.5, abs=0.02)
-    assert x.var() == pytest.approx(0.7, rel=0.03)
+    mean, var = 1.5, 0.7
+    x = noise_distribution(family, mean=mean, var=var)(200_000)
+    assert x.mean() == pytest.approx(mean, abs=0.02)
+    if family in HEAVY_TAILED:
+        df = _t_df(family)
+        ref = stats.t(df, loc=mean, scale=np.sqrt(var * (df - 2) / df))
+        np.testing.assert_allclose(np.quantile(x, [0.25, 0.75]), ref.ppf([0.25, 0.75]), atol=0.02)
+    else:
+        assert x.var() == pytest.approx(var, rel=0.03)
 
 
-def test_noise_distribution_rejects_unknown_family():
+@pytest.mark.parametrize("family", ["weibull", "t2", "t1", "t", "t3.5"])
+def test_noise_distribution_rejects_unknown_family(family):
     with pytest.raises(ValueError):
-        noise_distribution("weibull", 0.0, 1.0)
+        noise_distribution(family, 0.0, 1.0)
     with pytest.raises(ValueError):
-        build_model(np.zeros((2, 2)), np.ones(2), np.zeros(2), "weibull")
+        build_model(np.zeros((2, 2)), np.ones(2), np.zeros(2), family)
 
 
 def test_build_model_types():
     W, noise_var, means = _random_scm(0)
     assert isinstance(build_model(W, noise_var, means, "gaussian"), LGANM)
     assert isinstance(build_model(W, noise_var, means, "laplace"), ANM)
+    assert isinstance(build_model(W, noise_var, means, "t3"), ANM)
 
 
 def test_anm_and_lganm_sample_the_same_model():
@@ -111,7 +127,11 @@ def test_sample_shift_moves_target_by_shift(family):
     X = model.sample(n)
     Y = sample_shift(model, n, [target], family, shift=(2.0, 1.0))
     assert Y[:, target].mean() - X[:, target].mean() == pytest.approx(2.0, abs=0.03)
-    assert Y[:, target].var() - X[:, target].var() == pytest.approx(1.0, abs=0.05)
+    var_gain = Y[:, target].var() - X[:, target].var()
+    if family in HEAVY_TAILED:
+        assert 0.5 < var_gain < 1.5  # sample variances of t noise fluctuate; a band, not a point
+    else:
+        assert var_gain == pytest.approx(1.0, abs=0.05)
     # non-descendants keep their mean
     desc = nx.descendants(nx.DiGraph(Wt != 0), target) | {target}
     others = [j for j in range(P) if j not in desc]
@@ -162,7 +182,7 @@ def test_make_dataset_is_standardized_and_shifted():
 
 
 @pytest.mark.parametrize("graph", ["er", "sf"])
-@pytest.mark.parametrize("noise", ["gaussian", "uniform", "laplace"])
+@pytest.mark.parametrize("noise", NOISE_FAMILIES)
 def test_make_dataset_deterministic_in_seed(graph, noise):
     """Same seed → identical W, targets and every environment, regardless of the global
     ``np.random`` state and of other calls made in between; a different seed differs."""

@@ -1,7 +1,5 @@
-"""Synthetic dataset for one sweep cell: an iSCM (Ormaniec et al. 2024) sampled through
-sempler. All of the DGP lives in ``_common.make_dataset`` so the diagnostics sample exactly
-the same model; this script only maps Snakemake wildcards onto it and writes the ``.npz``.
-"""
+"""Synthetic dataset for one sweep cell: maps the wildcards onto ``_common.make_dataset``
+(an iSCM sampled through sempler) and writes the ``.npz``."""
 import warnings
 
 warnings.filterwarnings(
