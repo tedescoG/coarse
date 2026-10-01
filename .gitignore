@@ -14,7 +14,12 @@
 
 # snakemake experiments
 /src/expt/.snakemake/
-/src/expt/results/
+# per-cell data and fits, smoke runs and logs; collected CSVs and figures are tracked
+/src/expt/results/_data/
+/src/expt/results/_run/
+/src/expt/results/smoke/
+/src/expt/results/causalchamber/preprocessed/
+/src/expt/results/*.log
 /src/expt/data/
 
 # editor / OS
