@@ -64,25 +64,18 @@ DENS_SAMP = (
     else [100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000]
 )
 SAMP_SIZES = (
-    [500, 1000] if SMOKE else [500, 1000, 2000, 5000, 10000, 20000, 50000, 100000]
+    [1000, 2000] if SMOKE else [1000, 2000, 5000, 10000, 20000, 50000, 100000]
 )
 SCAL_NODES = [10, 20] if SMOKE else [10, 20, 50, 100, 200, 500, 1000]
-SCAL_SAMP = [100, 1000] if SMOKE else [100, 1000, 10000, 100000]
-NOISE_NODES = [10, 20] if SMOKE else [10, 50, 100, 200]
+SCAL_SAMP = [1000, 5000] if SMOKE else [1000, 5000, 10000, 50000, 100000]
+NOISE_NODES = [10, 20] if SMOKE else [50, 100, 200, 500]
 
 
-def cells(template, guard=None, **grid):
-    """Expand `template` over the product of `grid`, keeping cells where `guard` holds."""
+def cells(template, **grid):
+    """Expand `template` over the product of `grid`."""
     keys = list(grid)
     combos = [dict(zip(keys, values)) for values in product(*(grid[k] for k in keys))]
-    if guard is not None:
-        combos = [c for c in combos if guard(**c)]
     if not combos:
         return []
     columns = {k: [c[k] for c in combos] for k in keys}
     return expand(template, zip, allow_missing=True, **columns)
-
-
-def identifiable(samp_size, num_nodes, **_):
-    """n > p; otherwise every score is -inf."""
-    return samp_size > num_nodes

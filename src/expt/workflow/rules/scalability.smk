@@ -1,4 +1,4 @@
-# Scalability (p × n) for COARSE: er, ivn 5, density 0.2, n > p.
+# Scalability (p × n) for COARSE: er, ivn 5, density 0.2.
 SCAL_STEMS = ["ari_samp", "fscore_samp", "time_samp", "time_nodes"]
 SCAL_DIR = RESULTS + "scalability/coarse/"
 
@@ -7,7 +7,6 @@ rule collect_scalability:
     input:
         cells(
             PIPELINE + "metrics.csv",
-            guard=identifiable,
             **DEFAULT,
             method=["coarse"],
             graph=["er"],

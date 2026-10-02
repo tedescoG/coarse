@@ -1,5 +1,4 @@
-# Noise families under the true partition: COARSEOracle, er, ivn 5, density 0.2, n > p.
-NOISE_SAMP = sorted({100, 500, *SCAL_SAMP})
+# Noise families under the true partition: COARSEOracle, er, ivn 5, density 0.2.
 NOISE_DIR = RESULTS + "noise/"
 
 
@@ -7,7 +6,6 @@ rule collect_noise:
     input:
         cells(
             ORACLE + "metrics.csv",
-            guard=identifiable,
             method=["coarse"],
             noise=NOISES,
             lambda_pen=[LAMBDA_PEN],
@@ -15,7 +13,7 @@ rule collect_noise:
             num_nodes=NOISE_NODES,
             num_intervs=[5],
             density=[0.2],
-            samp_size=NOISE_SAMP,
+            samp_size=SCAL_SAMP,
             seed=SEEDS,
         ),
     output:
