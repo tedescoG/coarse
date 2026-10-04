@@ -729,6 +729,33 @@ def test_kpc_coarse_k1_finite_scores():
     assert model.dag.number_of_nodes() == 3
 
 
+def test_avg_coarse_matches_plain_on_block_means():
+    """avg equals plain COARSE on the obs-std-scaled block means: same score and edges."""
+    data_dict = _chain_data_dict(1500, 42)
+    reduced = {
+        ek: np.column_stack([X[:, sorted(b)].mean(1) for b in _CHAIN_PARTITION])
+        for ek, X in _scaled_by_obs_std(data_dict).items()
+    }
+    plain = COARSEOracle(rng=np.random.default_rng(0)).fit(
+        [frozenset({i}) for i in range(3)], _CHAIN_M[[0, 2, 4]], _CHAIN_ENV_ORDER, reduced
+    )
+    avg = COARSEOracle(rng=np.random.default_rng(0)).fit(
+        _CHAIN_PARTITION, _CHAIN_M, _CHAIN_ENV_ORDER, data_dict, avg=True
+    )
+    node = [tuple(sorted(b)) for b in _CHAIN_PARTITION]
+    assert {(node[i], node[j]) for (i,), (j,) in plain.dag.edges} == set(avg.dag.edges)
+    np.testing.assert_allclose(plain.score, avg.score, rtol=1e-10)
+    assert avg.fit_metadata["avg"] is True
+
+
+def test_avg_rejects_k():
+    data_dict = _chain_data_dict(200, 0)
+    with pytest.raises(ValueError, match="avg"):
+        COARSE().fit(data_dict, k=1, avg=True)
+    with pytest.raises(ValueError, match="avg"):
+        COARSEOracle().fit(_CHAIN_PARTITION, _CHAIN_M, _CHAIN_ENV_ORDER, data_dict, k=1, avg=True)
+
+
 def test_kpc_project_blocks_clamps_to_svd_rank():
     """With fewer obs rows than k, k_j is clamped to the SVD rank and the projected
     arrays, partition, and block offsets stay consistent."""

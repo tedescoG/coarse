@@ -25,11 +25,12 @@ from coarse.types import Block, EnvKey
 def _project_blocks(
     partition: list[Block],
     env_arrays: dict[EnvKey, np.ndarray],
-    k: int,
+    k: int | None,
     baseline_key: EnvKey,
 ) -> tuple[dict[EnvKey, np.ndarray], list[Block], dict[Block, Block]]:
     """kPC-COARSE: project every env's block onto the block's top-k right singular vectors
-    of the baseline env. Returns the projected arrays, partition and block map."""
+    of the baseline env; `k=None` projects onto the block mean. Returns the projected arrays,
+    partition and block map."""
     offset = 0
     proj_partition: list[Block] = []
     block_map: dict[Block, Block] = {}
@@ -37,15 +38,13 @@ def _project_blocks(
 
     for block in partition:
         orig_idx = np.asarray(sorted(block), dtype=np.int64)
-        r_j = len(orig_idx)
-        k_j = min(k, r_j)
-
-        ref = env_arrays[baseline_key][:, orig_idx]
-
-        _, _, Vt = np.linalg.svd(ref, full_matrices=False)
-        # The SVD has only min(n_ref, r_j) vectors.
-        k_j = min(k_j, Vt.shape[0])
-        V_j = Vt[:k_j, :].T  # (r_j, k_j)
+        if k is None:
+            V_j = np.full((len(orig_idx), 1), 1.0 / len(orig_idx))
+        else:
+            _, _, Vt = np.linalg.svd(env_arrays[baseline_key][:, orig_idx], full_matrices=False)
+            # The SVD has only min(n_ref, r_j) vectors.
+            V_j = Vt[: min(k, Vt.shape[0]), :].T  # (r_j, k_j)
+        k_j = V_j.shape[1]
 
         proj_block = frozenset(range(offset, offset + k_j))
         proj_partition.append(proj_block)
@@ -145,6 +144,7 @@ def _run_score_phase(
     rng: np.random.Generator,
     k: int | None = None,
     baseline_key: EnvKey = "obs",
+    avg: bool = False,
 ) -> tuple[
     dict[Block, frozenset[int]],
     dict[Block, list[Block]],
@@ -153,17 +153,20 @@ def _run_score_phase(
     float,
 ]:
     """Supports, candidate pools, τ, parent sets and total BIC, shared by both classes.
-    Centers each env here, once; kPC (`k` set) also scales by the baseline std."""
+    Centers each env here, once; kPC (`k` set) and `avg` also scale by the baseline std."""
     if k is not None and (
         isinstance(k, bool) or not isinstance(k, (int, np.integer)) or k < 1
     ):
         raise ValueError(f"k must be a positive integer, got {k!r}")
+    if avg and k is not None:
+        raise ValueError("avg and k are mutually exclusive")
     if lambda_pen < 0:
         raise ValueError(f"lambda_pen must be >= 0, got {lambda_pen!r}")
+    reduce = k is not None or avg
     centered_env_arrays: dict[EnvKey, np.ndarray] = {
         ek: v - v.mean(axis=0, keepdims=True) for ek, v in env_arrays.items()
     }
-    if k is not None:
+    if reduce:
         # obs_std > 0 assumed: constant columns are rejected by `check_input`.
         obs_std = centered_env_arrays[baseline_key].std(axis=0, keepdims=True)
         centered_env_arrays = {
@@ -174,7 +177,7 @@ def _run_score_phase(
     candidate_pools = compute_candidate_pools(supports)
     tau = list(partition)
 
-    if k is not None:
+    if reduce:
         score_data, score_partition, block_map = _project_blocks(
             partition, centered_env_arrays, k, baseline_key,
         )
@@ -242,6 +245,7 @@ class COARSE:
         baseline_key: EnvKey = "obs",
         k: int | None = None,
         check_input: bool = False,
+        avg: bool = False,
     ) -> "COARSE":
         check_start = time.perf_counter()
         if check_input:
@@ -266,7 +270,7 @@ class COARSE:
 
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
             partition, M, env_arrays, lambda_pen, rng_gs,
-            k=k, baseline_key=baseline_key,
+            k=k, baseline_key=baseline_key, avg=avg,
         )
 
         dag = _materialize_dag(partition, parent_sets)
@@ -286,6 +290,7 @@ class COARSE:
             "lambda_pen": lambda_pen,
             "refine_test": refine_test,
             "k": k,
+            "avg": avg,
             "num_parts": len(partition),
             "num_edges": dag.number_of_edges(),
             "score": score,
@@ -330,6 +335,7 @@ class COARSEOracle:
         baseline_key: EnvKey = "obs",
         k: int | None = None,
         check_input: bool = False,
+        avg: bool = False,
     ) -> "COARSEOracle":
         check_start = time.perf_counter()
         if check_input:
@@ -354,7 +360,7 @@ class COARSEOracle:
         rng_gs = self.rng.spawn(1)[0]
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
             partition, M, env_arrays, lambda_pen, rng_gs,
-            k=k, baseline_key=baseline_key,
+            k=k, baseline_key=baseline_key, avg=avg,
         )
         dag = _materialize_dag(partition, parent_sets)
 
@@ -371,6 +377,7 @@ class COARSEOracle:
         self.fit_metadata = {
             "lambda_pen": lambda_pen,
             "k": k,
+            "avg": avg,
             "num_parts": len(partition),
             "num_edges": dag.number_of_edges(),
             "score": score,
