@@ -1,19 +1,18 @@
-# COARSE, avg-COARSE and RePaRe edge recovery, true partition (er, 5 envs). Per (p, density):
+# COARSE and RePaRe edge recovery, true partition (er, 5 envs, density 0.2). Per p:
 # x=n, y=F1 | runtime, hue=method.
-MC_METHODS = ["coarse", "avg", "repare"]
+MC_METHODS = ["coarse", "repare"]
 MC_NODES = [10, 20] if SMOKE else [10, 20, 50, 100, 200, 300, 500]
 MC_METRICS = ["fscore", "runtime_sec"]
 MC_DIR = RESULTS + "methods_compare/"
 MC_PANELS = [
     dict(
-        out=f"er_p={p}_dens={d}_{m}",
-        filter={"num_nodes": p, "density": d},
+        out=f"er_p={p}_{m}",
+        filter={"num_nodes": p},
         x="samp_size",
         y=m,
         hue="method",
     )
     for p in MC_NODES
-    for d in DENSITIES
     for m in MC_METRICS
 ]
 
@@ -28,8 +27,8 @@ rule collect_methods_compare:
             graph=["er"],
             num_nodes=MC_NODES,
             num_intervs=[5],
-            density=DENSITIES,
-            samp_size=SAMP_SIZES,
+            density=[0.2],
+            samp_size=SCAL_SAMP,
             seed=SEEDS,
         ),
     output:
@@ -44,7 +43,7 @@ rule summarize_methods_compare:
     output:
         MC_DIR + "summary.csv",
     params:
-        by=["method", "num_nodes", "density", "samp_size"],
+        by=["method", "num_nodes", "samp_size"],
         metrics=["fscore", "precision", "recall", "runtime_sec"],
     script:
         "../scripts/summarize.py"
