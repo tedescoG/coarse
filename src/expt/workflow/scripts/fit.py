@@ -1,7 +1,6 @@
 """Fit COARSE on one synthetic dataset and pickle the model."""
 
 import pickle
-import time
 
 import numpy as np
 
@@ -22,7 +21,6 @@ data = np.load(snakemake.input.data, allow_pickle=True)
 data_dict = build_data_dict(data, data["targets"], intervention_type)
 
 model = COARSE()
-start = time.perf_counter()
 model.fit(
     data_dict,
     alpha=alpha,
@@ -30,7 +28,6 @@ model.fit(
     refine_test=refine_test,
     k=k,
 )
-model.fit_runtime_sec = time.perf_counter() - start
 
 with open(snakemake.output[0], "wb") as f:
     pickle.dump(model, f)

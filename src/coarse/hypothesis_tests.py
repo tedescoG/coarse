@@ -66,7 +66,7 @@ TEST_REGISTRY: dict[str, Callable[..., float]] = {
 
 
 def _normalize_env_data(env_value: Any) -> np.ndarray:
-    """One env entry as a validated float64 (n_e, p) array; targets and type are ignored."""
+    """One env entry as a float64 (n_e, p) array; targets and type are ignored."""
     if isinstance(env_value, dict):
         if "data" not in env_value:
             raise ValueError("dict-form env value must contain a 'data' key")
@@ -80,10 +80,6 @@ def _normalize_env_data(env_value: Any) -> np.ndarray:
     arr = np.ascontiguousarray(arr, dtype=np.float64)
     if arr.ndim != 2:
         raise ValueError(f"env data must be 2-D, got shape {arr.shape}")
-    if arr.shape[0] < 2:
-        raise ValueError(f"env data needs at least 2 rows, got {arr.shape[0]}")
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("env data contains NaN or inf")
     return arr
 
 

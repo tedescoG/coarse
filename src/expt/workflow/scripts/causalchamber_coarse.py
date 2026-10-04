@@ -6,7 +6,6 @@ COARSECV fit (score row). `fit_time` is the final refit; the search goes to
 
 import json
 import pickle
-import time
 from pathlib import Path
 
 import pandas as pd
@@ -72,11 +71,10 @@ def main():
     records = []
     dags = {}
     for alpha in alphas:
-        start = time.perf_counter()
         model = COARSE().fit(
             data_dict, alpha=alpha, lambda_pen=lambda_pen, refine_test=refine_test
         )
-        fit_time = time.perf_counter() - start
+        fit_time = model.fit_runtime_sec
         records.append(
             _row_from_model(model, alpha, lambda_pen, fit_time, true_labels, true_graph)
         )

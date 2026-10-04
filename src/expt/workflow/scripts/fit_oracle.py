@@ -1,7 +1,6 @@
 """Fit COARSEOracle (plain, or kPC when `k` is set) under the true partition."""
 
 import pickle
-import time
 
 import numpy as np
 
@@ -28,12 +27,10 @@ _, M_true, env_order, partition = build_oracle_partition(
 )
 
 model = COARSEOracle()
-start = time.perf_counter()
 model.fit(
     partition, M_true, env_order, data_dict,
     lambda_pen=lambda_pen, k=k,
 )
-model.fit_runtime_sec = time.perf_counter() - start
 
 with open(snakemake.output[0], "wb") as f:
     pickle.dump(model, f)

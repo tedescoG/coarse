@@ -91,8 +91,8 @@ def test_cv_partial_fold_failure_excludes_alpha(monkeypatch):
     def fake(tr, te, alpha, *args, **kwargs):
         calls[alpha] = calls.get(alpha, 0) + 1
         if alpha == 1e-2:
-            return -np.inf if calls[alpha] == 2 else 100.0
-        return 1.0
+            return (-np.inf if calls[alpha] == 2 else 100.0), 0.0
+        return 1.0, 0.0
 
     monkeypatch.setattr(cv_mod, "_evaluate_fold", fake)
     cv = COARSECV().fit(_chain_data_dict(n=200, seed=0), alpha_grid=(1e-3, 1e-2), n_folds=3)
@@ -122,7 +122,7 @@ def test_cv_all_folds_fail_raises():
 def test_cv_tiebreak_prefers_smaller_alpha(monkeypatch):
     import coarse.cv as cv_mod
 
-    monkeypatch.setattr(cv_mod, "_evaluate_fold", lambda *a, **k: -1.0)
+    monkeypatch.setattr(cv_mod, "_evaluate_fold", lambda *a, **k: (-1.0, 0.0))
     grid = (1e-3, 1e-2, 1e-4, 0.05)
     cv = COARSECV(rng=np.random.default_rng(0)).fit(
         _chain_data_dict(n=200, seed=0), alpha_grid=grid, n_folds=2
@@ -254,7 +254,7 @@ def test_evaluate_fold_centers_test_with_train_mean():
     data_dict = _chain_data_dict(n=600, seed=5)
     train, test = next(_kfold_split_env(data_dict, 3, np.random.default_rng(0)))
     args = (1e-3, 1.0, "welch", "obs")
-    ll = _evaluate_fold(train, test, *args, np.random.default_rng(0))
+    ll, _ = _evaluate_fold(train, test, *args, np.random.default_rng(0))
 
     model = COARSE(rng=np.random.default_rng(0)).fit(train, alpha=1e-3)
     means = {ek: v.mean(axis=0, keepdims=True) for ek, v in train.items()}
@@ -269,7 +269,7 @@ def test_evaluate_fold_centers_test_with_train_mean():
     assert ll == pytest.approx(expected, rel=1e-12)
 
     shifted = {ek: v + 5.0 for ek, v in test.items()}
-    assert _evaluate_fold(train, shifted, *args, np.random.default_rng(0)) < ll
+    assert _evaluate_fold(train, shifted, *args, np.random.default_rng(0))[0] < ll
 
 
 # ---------------------------------------------------------------------------

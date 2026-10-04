@@ -161,7 +161,6 @@ def test_normalize_env_data_forms():
         ({"targets": {0}}, "'data'"),
         ((), "empty"),
         (np.arange(4.0), "2-D"),
-        (np.ones((1, 2)), "2 rows"),
     ):
         with pytest.raises(ValueError, match=match):
             _normalize_env_data(bad)
@@ -528,7 +527,7 @@ def test_fit_rejects_bad_input(corrupt):
         data_dict["1"][3, 2] = np.nan
     else:
         data_dict["1"] = data_dict["1"][:1]
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="NaN" if corrupt == "nan" else "2 rows"):
         COARSE().fit(data_dict)
 
 

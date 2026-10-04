@@ -10,7 +10,7 @@ from typing import Any, Iterator, Sequence
 import numpy as np
 from scipy import linalg as sla
 
-from coarse.coarse import COARSE, _normalize_data_dict
+from coarse.coarse import COARSE, _check_data_dict, _normalize_data_dict
 from coarse.scoring import (
     _block_indices,
     _block_regression_from_sigma,
@@ -96,9 +96,9 @@ def _evaluate_fold(
     refine_test: str,
     baseline_key: EnvKey,
     rng: np.random.Generator,
-) -> float:
-    """Held-out log-likelihood of COARSE fit on `train_dict` at `alpha`; -inf if any block
-    fails."""
+) -> tuple[float, float]:
+    """(held-out log-likelihood, input-check seconds) of COARSE fit on `train_dict` at
+    `alpha`; the log-likelihood is -inf if any block fails."""
     model = COARSE(rng=rng).fit(
         train_dict,
         alpha=alpha,
@@ -122,7 +122,7 @@ def _evaluate_fold(
                     block_idx, parent_idx, stats.sigma,
                 )
             except sla.LinAlgError:
-                return -np.inf
+                return -np.inf, model.check_runtime_sec
 
             Xt_c = test_dict[ek] - env_means[ek]
             n_test = Xt_c.shape[0]
@@ -140,15 +140,15 @@ def _evaluate_fold(
                 X_test_parents,
             )
             if not np.isfinite(ll):
-                return -np.inf
+                return -np.inf, model.check_runtime_sec
             total += ll
-    return total
+    return total, model.check_runtime_sec
 
 
 class COARSECV:
     """COARSE with α chosen by K-fold CV. After `fit`: `best_alpha`, `cv_log_lik` (α → sum
-    over folds), `cv_per_fold_log_lik`, `final_model`, `cv_runtime_sec`, plus every COARSE
-    attribute of `final_model`."""
+    over folds), `cv_per_fold_log_lik`, `final_model`, `cv_runtime_sec` (excludes input
+    validation), plus every COARSE attribute of `final_model`."""
 
     def __init__(self, rng: np.random.Generator | None = None) -> None:
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -162,6 +162,8 @@ class COARSECV:
         refine_test: str = "welch",
         baseline_key: EnvKey = "obs",
     ) -> "COARSECV":
+        _check_data_dict(data_dict)
+        # Input checks are not timed: fold and refit check time is subtracted below.
         cv_start = time.perf_counter()
 
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
@@ -180,11 +182,12 @@ class COARSECV:
 
         # One fold in memory at a time; the (α, fold) RNG grid makes loop order irrelevant.
         per_fold = np.full((len(alpha_grid), n_folds), -np.inf, dtype=float)
+        check_sec = 0.0
         for k, (tr, te) in enumerate(
             _kfold_split_env(env_arrays, n_folds, splitter_rng)
         ):
             for i, alpha in enumerate(alpha_grid):
-                per_fold[i, k] = _evaluate_fold(
+                per_fold[i, k], fold_check_sec = _evaluate_fold(
                     tr,
                     te,
                     alpha,
@@ -193,6 +196,7 @@ class COARSECV:
                     baseline_key,
                     inner_rngs[i, k],
                 )
+                check_sec += fold_check_sec
 
         sums = per_fold.sum(axis=1)
         cv_log_lik = {alpha_grid[i]: float(sums[i]) for i in range(len(alpha_grid))}
@@ -226,7 +230,9 @@ class COARSECV:
         self.cv_log_lik = cv_log_lik
         self.best_alpha = best_alpha
         self.final_model = final_model
-        self.cv_runtime_sec = time.perf_counter() - cv_start
+        self.cv_runtime_sec = (
+            time.perf_counter() - cv_start - check_sec - final_model.check_runtime_sec
+        )
 
         for attr in (
             "partition",
@@ -240,6 +246,7 @@ class COARSECV:
             "score",
             "num_features",
             "fit_runtime_sec",
+            "check_runtime_sec",
         ):
             setattr(self, attr, getattr(final_model, attr))
         self.fit_metadata = dict(final_model.fit_metadata)

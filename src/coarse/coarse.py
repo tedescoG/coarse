@@ -64,7 +64,7 @@ def _project_blocks(
 def _normalize_data_dict(
     data_dict: dict[EnvKey, Any], baseline_key: EnvKey = "obs"
 ) -> tuple[dict[EnvKey, np.ndarray], EnvKey]:
-    """Validated float64 (n_e, p) arrays. An env is an array, a `(data, targets, type)` tuple
+    """Float64 (n_e, p) arrays. An env is an array, a `(data, targets, type)` tuple
     or a `{"data": ...}` dict; only the data is used."""
     if baseline_key not in data_dict:
         raise ValueError(
@@ -80,9 +80,20 @@ def _normalize_data_dict(
             raise ValueError(
                 f"env {key!r} has {arr.shape[1]} columns; expected {p_ref}"
             )
-        _check_columns_non_degenerate(key, arr)
         out[key] = arr
     return out, baseline_key
+
+
+def _check_data_dict(data_dict: dict[EnvKey, Any]) -> None:
+    """Input validation, run before the timed fit: every env has at least 2 finite rows and
+    non-degenerate columns."""
+    for key, value in data_dict.items():
+        arr = _normalize_env_data(value)
+        if arr.shape[0] < 2:
+            raise ValueError(f"env {key!r} needs at least 2 rows, got {arr.shape[0]}")
+        if not np.all(np.isfinite(arr)):
+            raise ValueError(f"env {key!r} contains NaN or inf")
+        _check_columns_non_degenerate(key, arr)
 
 
 def _check_columns_non_degenerate(key: EnvKey, arr: np.ndarray) -> None:
@@ -215,7 +226,7 @@ class COARSE:
     `fit` sets: `partition` (Π_E), `M`, `env_order` (columns of M), `supports`,
     `candidate_pools`, `linear_extension_` (τ), `parent_sets`, `dag` (nodes are
     `tuple(sorted(block))`), `score` (total BIC), `num_features`, `fit_metadata`,
-    `fit_runtime_sec`.
+    `fit_runtime_sec` (excludes input validation) and `check_runtime_sec` (input validation).
     """
 
     def __init__(self, rng: np.random.Generator | None = None) -> None:
@@ -230,6 +241,8 @@ class COARSE:
         baseline_key: EnvKey = "obs",
         k: int | None = None,
     ) -> "COARSE":
+        check_start = time.perf_counter()
+        _check_data_dict(data_dict)
         start = time.perf_counter()
 
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
@@ -274,6 +287,7 @@ class COARSE:
             "num_edges": dag.number_of_edges(),
             "score": score,
         }
+        self.check_runtime_sec = start - check_start
         self.fit_runtime_sec = time.perf_counter() - start
         return self
 
@@ -313,6 +327,8 @@ class COARSEOracle:
         baseline_key: EnvKey = "obs",
         k: int | None = None,
     ) -> "COARSEOracle":
+        check_start = time.perf_counter()
+        _check_data_dict(data_dict)
         start = time.perf_counter()
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
         M = np.asarray(M, dtype=bool)
@@ -354,6 +370,7 @@ class COARSEOracle:
             "num_edges": dag.number_of_edges(),
             "score": score,
         }
+        self.check_runtime_sec = start - check_start
         self.fit_runtime_sec = time.perf_counter() - start
         return self
 
