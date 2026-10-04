@@ -6,8 +6,10 @@ import numpy as np
 import pytest
 
 from _common import (
+    block_parents,
     build_oracle_partition,
     correct,
+    family_size,
     interventional_partition,
     partition_edge_metrics,
     partition_labels,
@@ -49,6 +51,20 @@ def test_partition_edge_metrics_scores_forward_pairs_in_node_order():
     empty = nx.DiGraph()
     empty.add_nodes_from([(0, 1, 2, 3)])
     assert partition_edge_metrics(empty, truth) == {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+
+
+def test_block_parents_and_family_size():
+    """Blocks {0, 1}, {2}, {3, 4, 5}; edges 0→1 (within), 1→3, 2→4, 0→5: block 2 has parents
+    blocks 0 and 1. Family sizes in variables and with at most k per block."""
+    truth = nx.DiGraph([(0, 1), (1, 3), (2, 4), (0, 5)])
+    partition = [frozenset({0, 1}), frozenset({2}), frozenset({3, 4, 5})]
+    parents = block_parents(truth, partition)
+    assert parents == [set(), set(), {0, 1}]
+    assert family_size(partition, parents, 0) == 2
+    assert family_size(partition, parents, 2) == 6
+    assert family_size(partition, parents, 2, k=1) == 3
+    assert family_size(partition, parents, 2, k=3) == 6
+    assert family_size(partition, parents, 2, k=2) == 5
 
 
 def test_prf_empty_conventions():

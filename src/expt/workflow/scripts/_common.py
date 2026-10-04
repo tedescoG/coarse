@@ -129,6 +129,23 @@ def partition_edge_metrics(model_dag, true_graph) -> dict:
     return dict(zip(PRF_KEYS, prf(tp, len(model_dag.edges), len(reference))))
 
 
+def block_parents(true_graph, partition) -> list[set[int]]:
+    """Parent blocks (indices into `partition`) of every block: blocks with any variable edge
+    into it."""
+    index = {v: i for i, block in enumerate(partition) for v in block}
+    parents = [set() for _ in partition]
+    for u, v in true_graph.edges:
+        if index[u] != index[v]:
+            parents[index[v]].add(index[u])
+    return parents
+
+
+def family_size(partition, parents, j: int, k: int | None = None) -> int:
+    """Dimension of block j's family: variables, or at most `k` per block when reduced."""
+    size = len if k is None else (lambda block: min(k, len(block)))
+    return size(partition[j]) + sum(size(partition[i]) for i in parents[j])
+
+
 # iSCM (Ormaniec et al., 2024): every observational variable has unit variance. Interventions
 # reuse the observational standardization; interventional envs are not re-standardized.
 NOISE_FAMILIES = ("gaussian", "uniform", "laplace", "t3", "t4")

@@ -21,12 +21,13 @@ include: "rules/methods_compare.smk"
 include: "rules/lambda_sens.smk"
 include: "rules/threshold_correction.smk"
 include: "rules/multitarget.smk"
+include: "rules/highdim.smk"
 include: "rules/causalchamber.smk"
 
 
 # Targets: densities_all, scalability_all, noise_all, methods_compare_all, lambda_sens_all,
-# threshold_correction_all, multitarget_all, causalchamber, coarse_all, all. Put targets
-# before `--config`.
+# threshold_correction_all, multitarget_all, highdim_all, causalchamber, coarse_all, all. Put
+# targets before `--config`.
 rule coarse_all:
     input:
         rules.densities_all.input,
@@ -34,6 +35,7 @@ rule coarse_all:
         rules.noise_all.input,
         rules.lambda_sens_all.input,
         rules.threshold_correction_all.input,
+        rules.highdim_all.input,
 
 
 rule all:
@@ -46,4 +48,5 @@ rule all:
         rules.lambda_sens_all.input,
         rules.threshold_correction_all.input,
         rules.multitarget_all.input,
+        rules.highdim_all.input,
         rules.causalchamber.input,

@@ -1,4 +1,5 @@
-# Fits under the true partition: COARSEOracle (plain / kPC / avg) and RePaRe.
+# Fits under the true partition: COARSEOracle (plain / kPC / avg) and RePaRe; per-block
+# parent recovery for COARSEOracle.
 
 
 rule fit_oracle:
@@ -50,3 +51,19 @@ rule evaluate_oracle:
         lambda_pen=lambda w: float(w.lambda_pen),
     script:
         "../scripts/evaluate.py"
+
+
+rule evaluate_oracle_blocks:
+    input:
+        data=ORACLE_DATA + "dataset.npz",
+        model=ORACLE + "model.pkl",
+    output:
+        ORACLE + "blocks.csv",
+    wildcard_constraints:
+        method="coarse|kpc1|kpc3|avg",
+    resources:
+        mem_mb=cell_mem_mb,
+    params:
+        method_label=lambda w: ORACLE_LABELS[w.method],
+    script:
+        "../scripts/evaluate_blocks.py"
