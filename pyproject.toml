@@ -5,9 +5,6 @@ description = "COARSE — block-level score-based causal discovery from soft int
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "GPL-3.0-or-later" }
-authors = [
-    { name = "Gaetano Tedesco", email = "gt@4bc.dk" },
-]
 keywords = ["causal-discovery", "interventional-data", "partition", "dag", "bic"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -24,10 +21,6 @@ dependencies = [
     "numpy>=2.0",
     "scipy>=1.15.1",
 ]
-
-[project.urls]
-Repository = "https://github.com/tedescoG/coarse"
-Issues = "https://github.com/tedescoG/coarse/issues"
 
 [build-system]
 requires = ["hatchling"]

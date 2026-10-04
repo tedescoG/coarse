@@ -1,5 +1,5 @@
-"""Score a fitted model against the true DAG (ARI and block-edge P/R/F1). Every method goes
-through this script; collect, summarize and plot read its columns."""
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
+"""ARI and block-edge P/R/F1 against the truth; shared by every method."""
 
 import pickle
 

@@ -1,8 +1,3 @@
-"""highdim figures, one column per number of interventions: graph-level P/R/F1 against n
-(median with a bootstrap CI, dashed n = p); per-block exact parent set and recall against
-n / F_j with F_j the family size in variables (log2 bins, mean within cell then across cells,
-dashed n = F_j); share of blocks with n > F_j in the method's units (dashed n = p)."""
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd

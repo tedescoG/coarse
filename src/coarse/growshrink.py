@@ -14,7 +14,6 @@ from coarse.types import Block, EnvKey
 
 
 def _shuffled(items: list[Block], rng: np.random.Generator) -> list[Block]:
-    """`items` in random order."""
     if not items:
         return []
     order = rng.permutation(len(items))

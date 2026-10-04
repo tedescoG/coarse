@@ -42,7 +42,8 @@ def test_partition_labels_indexes_blocks_in_iteration_order():
 
 
 def test_partition_edge_metrics_scores_forward_pairs_in_node_order():
-    """Truth 0→1, 1→2, 2→3; blocks (0,), (1, 2), (3,); the backward edge is a false positive."""
+    """Truth 0→1, 1→2, 2→3; blocks (0,), (1, 2), (3,): the backward edge is a false positive.
+    An empty estimate or truth gives P = 1 or R = 1."""
     truth = nx.DiGraph([(0, 1), (1, 2), (2, 3)])
     est = nx.DiGraph()
     est.add_nodes_from([(0,), (1, 2), (3,)])
@@ -51,6 +52,7 @@ def test_partition_edge_metrics_scores_forward_pairs_in_node_order():
     empty = nx.DiGraph()
     empty.add_nodes_from([(0, 1, 2, 3)])
     assert partition_edge_metrics(empty, truth) == {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+    assert prf(0, 2, 0) == (0.0, 1.0, 0.0)
 
 
 def test_block_parents_and_family_size():
@@ -65,11 +67,6 @@ def test_block_parents_and_family_size():
     assert family_size(partition, parents, 2, k=1) == 3
     assert family_size(partition, parents, 2, k=3) == 6
     assert family_size(partition, parents, 2, k=2) == 5
-
-
-def test_prf_empty_conventions():
-    assert prf(0, 0, 0) == (1.0, 1.0, 1.0)
-    assert prf(0, 2, 0) == (0.0, 1.0, 0.0)
 
 
 def test_correct_matches_hand_computed_rejections():

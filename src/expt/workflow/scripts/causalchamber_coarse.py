@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
-"""COARSE on the Causal Chamber: an α grid (oracle row = best cell vs ground truth) and one
-COARSECV fit (score row). `fit_time` is the final refit; the search goes to
-`search_runtime_sec`."""
+"""COARSE α grid (oracle row) and COARSECV (score row); the CV search time is `search_runtime_sec`."""
 
 import json
 import pickle

@@ -1,6 +1,3 @@
-"""multitarget figures: ARI, block ratio |Π^E|/|Π^I| and hidden-edge fraction (rows) per
-density (columns) for the native, disjoint and overlap designs; mean with a 95% bootstrap CI."""
-
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns

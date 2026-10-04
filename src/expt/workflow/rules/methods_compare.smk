@@ -1,4 +1,5 @@
-# Methods under the true partition (edge recovery only).
+# COARSE, avg-COARSE and RePaRe edge recovery, true partition (er, 5 envs). Per (p, density):
+# x=n, y=F1 | runtime, hue=method.
 MC_METHODS = ["coarse", "avg", "repare"]
 MC_NODES = [10, 20] if SMOKE else [10, 20, 50, 100, 200, 300, 500]
 MC_METRICS = ["fscore", "runtime_sec"]

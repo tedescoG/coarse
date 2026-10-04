@@ -21,7 +21,6 @@ def _block_indices(block: Block) -> np.ndarray:
 
 
 def _parents_indices(parents: Iterable[Block]) -> np.ndarray:
-    """Sorted indices of each parent block, concatenated."""
     parts = [_block_indices(p) for p in parents]
     if not parts:
         return np.empty(0, dtype=np.int64)
@@ -31,7 +30,6 @@ def _parents_indices(parents: Iterable[Block]) -> np.ndarray:
 def _parents_indices_cached(
     parents: Iterable[Block], idx_cache: dict[Block, np.ndarray]
 ) -> np.ndarray:
-    """`_parents_indices` from a precomputed cache."""
     parts = [idx_cache[p] for p in parents]
     if not parts:
         return np.empty(0, dtype=np.int64)
@@ -91,8 +89,7 @@ def _block_bic_env_from_sigma(
     log_n_e: float | None = None,
     S_jj: np.ndarray | None = None,
 ) -> float:
-    """Per-env BIC; -inf if n_e <= s_j + r_j or a covariance is not positive definite.
-    `d_j`, `log_n_e`, `S_jj` are optional precomputed values."""
+    """Per-env BIC; -inf if n_e <= s_j + r_j or a covariance is not positive definite."""
     r_j, s_j = block_idx.size, parent_idx.size
     if n_e <= 0 or r_j <= 0:
         return -np.inf
@@ -125,8 +122,7 @@ def pooled_block_bic_from_sigma(
     idx_cache: dict[Block, np.ndarray] | None = None,
     S_jj_cache: dict[EnvKey, np.ndarray] | None = None,
 ) -> float:
-    """Sum of per-env BICs; -inf as soon as one is. The keyword caches are optional
-    precomputed indices and per-env `S_jj` slices."""
+    """Sum of per-env BICs; -inf as soon as one is."""
     if block_idx is None:
         block_idx = _block_indices(block)
     if idx_cache is not None:

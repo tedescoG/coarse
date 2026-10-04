@@ -1,3 +1,4 @@
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
 import pandas as pd
 
 dfs = [pd.read_csv(f) for f in snakemake.input]

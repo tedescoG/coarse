@@ -1,6 +1,5 @@
-"""K-fold CV of COARSE's test threshold α: fit on the train folds, score the held-out Gaussian
-log-likelihood (test folds centered with the train means), refit at the best α. The full
-likelihood (with the log 2π and trace terms) is kept since blocks change across α."""
+"""K-fold CV of α by held-out Gaussian log-likelihood, then a refit at the best α. The full
+likelihood is kept since the blocks change across α."""
 
 from __future__ import annotations
 
@@ -148,9 +147,7 @@ def _evaluate_fold(
 
 
 class COARSECV:
-    """COARSE with α chosen by K-fold CV. After `fit`: `best_alpha`, `cv_log_lik` (α → sum
-    over folds), `cv_per_fold_log_lik`, `final_model`, `cv_runtime_sec` (excludes input
-    validation), plus every COARSE attribute of `final_model`."""
+    """COARSE with α chosen by K-fold CV; also exposes every COARSE attribute of `final_model`."""
 
     def __init__(self, rng: np.random.Generator | None = None) -> None:
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -271,7 +268,6 @@ class COARSECV:
 
 
 def cv_coarse(data_dict: dict[EnvKey, Any], **kwargs: Any) -> COARSECV:
-    """`COARSECV().fit(data_dict, **kwargs)`."""
     return COARSECV().fit(data_dict, **kwargs)
 
 

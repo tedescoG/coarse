@@ -25,6 +25,10 @@ model.partition   # list of blocks (frozensets of column indices)
 model.dag         # networkx.DiGraph over the blocks
 
 model = COARSECV().fit(data_dict)   # alpha chosen by 10-fold cross-validation
+
+COARSE().fit(data_dict, k=1)        # kPC-COARSE: score each block's top-k principal components
+COARSE().fit(data_dict, avg=True)   # avg-COARSE: score each block's mean
+COARSEOracle().fit(partition, M, env_order, data_dict)   # score step under a given partition
 ```
 
 ## Tests
@@ -37,14 +41,20 @@ uv run pytest tests/
 
 Run from `src/expt/`. Outputs go to `src/expt/results/`.
 
-| Experiment | Command |
-|---|---|
-| Densities | `uv run snakemake densities_all --cores 12` |
-| Scalability | `uv run snakemake scalability_all --cores 12 --resources mem_mb=24000` |
-| Noise | `uv run snakemake noise_all --cores 12` |
-| Method comparison | `uv run snakemake methods_compare_all --cores 12 --resources mem_mb=24000` |
-| Causal Chamber | `uv run snakemake causalchamber --cores 4` |
-| All of the above | `uv run snakemake all --cores 12 --resources mem_mb=24000 --keep-going` |
+| Experiment | What it measures | Command |
+|---|---|---|
+| Densities | COARSE vs n across graph densities (p = 10) | `uv run snakemake densities_all --cores 12` |
+| Scalability | COARSE as p and n grow | `uv run snakemake scalability_all --cores 12 --resources mem_mb=24000` |
+| Noise | score step under non-Gaussian noise | `uv run snakemake noise_all --cores 12` |
+| Method comparison | COARSE, avg-COARSE and RePaRe under the true partition | `uv run snakemake methods_compare_all --cores 12 --resources mem_mb=24000` |
+| λ sensitivity | BIC penalty multiplier | `uv run snakemake lambda_sens_all --cores 12` |
+| Threshold correction | descendant-test cutoff rules (α, Bonferroni, BH, BY, CV) | `uv run snakemake threshold_correction_all --cores 12` |
+| Multi-target | partition under multi-target interventions (population and estimated) | `uv run snakemake multitarget_all --cores 12` |
+| High-dimensional | score step for n ≤ p (COARSE, kPC, avg) | `uv run snakemake highdim_all --cores 12` |
+| Causal Chamber | real-data benchmark against RePaRe, GIES, GnIES, UT-IGSP | `uv run snakemake causalchamber --cores 4` |
+| All of the above | | `uv run snakemake all --cores 12 --resources mem_mb=24000 --keep-going` |
+
+`coarse_all` runs every COARSE-only sweep (densities, scalability, noise, λ, threshold, high-dim).
 
 - `mem_mb` caps the memory of concurrent cells; the largest scalability cells need about 14 GB.
 - Add `--config smoke=1` (after the target) for a quick run on small grids.
@@ -53,8 +63,9 @@ Run from `src/expt/`. Outputs go to `src/expt/results/`.
 
 ## Third-party code
 
-- [RePaRe](https://github.com/Alex-Markham/repare) (GPL-3.0): a dependency. The Causal
-  Chamber scripts and `fit_oracle_repare.py` are adapted from its experiments.
+- [RePaRe](https://github.com/Alex-Markham/repare) (GPL-3.0): a dependency. The synthetic
+  pipeline, the Causal Chamber scripts and `fit_oracle_repare.py` are adapted from its experiments
+  (files marked `Adapted from RePaRe`).
 - UT-IGSP wrapper `src/expt/workflow/scripts/ut_igsp.py` (BSD-3-Clause, J. L. Gamella): vendored
   from [causal-chamber-paper](https://github.com/juangamella/causal-chamber-paper).
 - [GIES](https://github.com/juangamella/gies), [GnIES](https://github.com/juangamella/gnies),

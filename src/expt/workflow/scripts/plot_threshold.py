@@ -1,6 +1,3 @@
-"""threshold_correction figures: ARI against the per-test cutoff with each rule at its median
-cutoff (rows n, columns density), and each rule's paired ARI gap to the oracle α."""
-
 import math
 
 import matplotlib.pyplot as plt

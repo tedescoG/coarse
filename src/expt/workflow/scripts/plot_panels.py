@@ -1,11 +1,5 @@
-"""One line plot per entry of `snakemake.params.panels`, a dict with:
-    out        output key
-    x, y, hue  columns
-    filter     optional {column: value}
-    hue_order  optional level order
-    col        optional facet column
-    vline      optional x of a dashed reference line (single panel only)
-"""
+"""One line plot per `params.panels` entry: out, x, y, hue; optional filter, hue_order, col (facet),
+vline (dashed x reference)."""
 
 import pandas as pd
 import seaborn as sns

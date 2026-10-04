@@ -1,5 +1,5 @@
-# High-dimensional regime (n ≤ p) under the true partition: COARSEOracle plain, 1PC, 3PC and avg;
-# er, p=100, density 0.1, graph-level and per-block parent recovery.
+# Score step for n ≤ p, true partition: COARSE, 1PC, 3PC, avg (er, p=100, density 0.1). Cols = #envs,
+# hue=method; graph: x=n, y=P | R | F1; blocks: x=n/F_j, y=exact | recall; feasible: x=n, y=share n > F_j.
 HD_METHODS = ["coarse", "kpc1", "kpc3", "avg"]
 HD_IVNS = [5, 10] if SMOKE else [5, 10, 20]
 HD_SAMP = (

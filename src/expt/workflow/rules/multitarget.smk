@@ -1,5 +1,6 @@
-# Population gap between the env and interventional partitions with multi-target envs; er, p=50.
-# Estimation: COARSECV on data with k targets per env, m=10 (in no other grid).
+# Population Π^E vs single-target Π^I under multi-target envs (er, p=50). Rows ARI | |Π^E|/|Π^I| |
+# hidden edges, cols density; native x=k hue=m, disjoint x=k, overlap x=m hue=k (dashed: single target).
+# Estimation: COARSECV ARI against Π^E and Π^I (m=10); x=k, hue=n, dashed population ARI.
 MT_NODES = [50]
 MT_DENSITIES = [0.2, 0.5, 0.8]
 MT_SEEDS = list(range(2 if SMOKE else 200))

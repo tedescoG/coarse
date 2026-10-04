@@ -1,4 +1,5 @@
-# Densities sweep for COARSE: density × n at p = 10, per graph family and ivn.
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
+# COARSE vs n at p=10 across densities (er/sf; 2, 5, 8 envs). x=n, y=ARI | F1 | runtime, hue=density.
 DENS_IVNS = [2, 5, 8]
 DENS_GRAPHS = ["er", "sf"]
 DENS_METRICS = ["ari", "fscore", "runtime_sec"]

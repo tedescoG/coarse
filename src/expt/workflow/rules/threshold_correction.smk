@@ -1,4 +1,5 @@
-# Descendant-test cutoff: uncorrected α, Bonferroni / BH / BY, COARSECV and oracle α; er, ivn 5.
+# Descendant-test cutoff rules vs partition ARI (er, p=250, 5 envs). curves: x=cutoff, y=ARI,
+# rows n, cols density, markers = rules at their median cutoff; gap: ARI − oracle-α ARI per rule.
 TC_NODES = [20] if SMOKE else [250]
 TC_SAMP = [1000, 2000] if SMOKE else [10000, 100000]
 TC_DENSITIES = [0.2, 0.5, 0.8]

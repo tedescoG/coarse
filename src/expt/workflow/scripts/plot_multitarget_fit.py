@@ -1,7 +1,3 @@
-"""multitarget estimation figure: ARI of the COARSECV partition against Π^E and Π^I (rows) per
-density (columns), x = targets per env, hue = sample size; mean with a 95% bootstrap CI. The
-dashed line is the population ARI(Π^E, Π^I)."""
-
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns

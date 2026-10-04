@@ -1,4 +1,5 @@
-# Scalability (p × n) for COARSE: er, ivn 5, density 0.2.
+# COARSE as p and n grow (er, 5 envs, density 0.2). x=n, y=ARI | F1 | runtime, hue=p;
+# time_nodes: x=p, hue=n.
 SCAL_STEMS = ["ari_samp", "fscore_samp", "time_samp", "time_nodes"]
 SCAL_DIR = RESULTS + "scalability/coarse/"
 

@@ -1,7 +1,6 @@
 # Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
-# Causal Chamber light tunnel: COARSE and RePaRe on the grouped and ungrouped regimes, GIES,
-# GnIES and UT-IGSP on the ungrouped one. Score rows never use ground truth; oracle rows take
-# the best grid cell. Per method: results/causalchamber/<method>_<mode>/.
+# Light-tunnel benchmark: COARSE and RePaRe (grouped, ungrouped), GIES, GnIES, UT-IGSP (ungrouped).
+# Tables only; score rows never use ground truth, oracle rows take the best grid cell.
 
 ALPHAS = [1e-4, 1e-3, 1e-2, 0.1]
 BETAS = [1e-4, 1e-3, 1e-2, 0.1]

@@ -1,3 +1,4 @@
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
 """Fit COARSE on one synthetic dataset and pickle the model."""
 
 import pickle

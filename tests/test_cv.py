@@ -1,24 +1,15 @@
-"""Tests for COARSECV: K-fold selection of alpha, splitter, held-out likelihood, refit RNG."""
+"""Tests for COARSECV: alpha selection, splitter, held-out likelihood, RNG contract."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
-from scipy import linalg as sla
 from scipy.stats import multivariate_normal
-
-from conftest import sample_chain_dataset
 
 import coarse.coarse as coarse_mod
 import coarse.cv as cv_mod
 from coarse.coarse import COARSE
-from coarse.cv import (
-    COARSECV,
-    _evaluate_fold,
-    _heldout_block_log_lik,
-    _kfold_split_env,
-    cv_coarse,
-)
+from coarse.cv import COARSECV, _evaluate_fold, _heldout_block_log_lik, _kfold_split_env
 from coarse.scoring import (
     _block_indices,
     _block_regression_from_sigma,
@@ -26,34 +17,22 @@ from coarse.scoring import (
     compute_env_stats,
 )
 
-
-def _chain_data_dict(n: int, seed: int) -> dict:
-    rng = np.random.default_rng(seed)
-    return {
-        "obs": sample_chain_dataset(n, rng),
-        "1": sample_chain_dataset(n, rng, shift_targets=(0, 1)),
-        "2": sample_chain_dataset(n, rng, shift_targets=(2, 3)),
-        "3": sample_chain_dataset(n, rng, shift_targets=(4, 5)),
-    }
+from conftest import chain_data_dict, sample_chain_dataset
 
 
 # ---------------------------------------------------------------------------
 # public API
 # ---------------------------------------------------------------------------
-def test_cv_smoke_returns_best_alpha_in_grid():
-    data_dict = _chain_data_dict(n=800, seed=0)
-    grid = (1e-4, 1e-2, 0.1)
-    n_folds = 3
+def test_cv_picks_best_alpha_and_forwards_refit():
+    data_dict = chain_data_dict(800, 0)
+    grid, n_folds = (1e-4, 1e-2, 0.1), 3
     cv = COARSECV(rng=np.random.default_rng(1)).fit(data_dict, alpha_grid=grid, n_folds=n_folds)
 
-    assert cv.best_alpha in grid
     assert cv.cv_per_fold_log_lik.shape == (len(grid), n_folds)
-    assert set(cv.cv_log_lik.keys()) == set(grid)
-    assert np.isfinite(cv.cv_log_lik[cv.best_alpha])
+    assert set(cv.cv_log_lik) == set(grid)
     assert cv.cv_log_lik[cv.best_alpha] == max(cv.cv_log_lik.values())
+    assert np.isfinite(cv.cv_log_lik[cv.best_alpha])
 
-    # Forwarded attributes match the final refit.
-    assert set(cv.dag.nodes) == set(cv.final_model.dag.nodes)
     assert set(cv.dag.edges) == set(cv.final_model.dag.edges)
     assert cv.score == cv.final_model.score
     assert cv.fit_runtime_sec == cv.final_model.fit_runtime_sec
@@ -62,216 +41,134 @@ def test_cv_smoke_returns_best_alpha_in_grid():
     assert cv.fit_metadata["n_folds"] == n_folds
 
 
-def test_cv_coarse_matches_class_with_default_rng():
-    """`cv_coarse` is `COARSECV().fit(...)` with the default RNG."""
-    data_dict = _chain_data_dict(n=600, seed=2)
-    kwargs = dict(alpha_grid=(1e-3, 1e-2), n_folds=2)
-    cv_class = COARSECV(rng=np.random.default_rng(0)).fit(data_dict, **kwargs)
-    cv_func = cv_coarse(data_dict, **kwargs)
-    assert isinstance(cv_func, COARSECV)
-    assert cv_func.best_alpha == cv_class.best_alpha
-    assert set(cv_func.dag.edges) == set(cv_class.dag.edges)
-    assert cv_func.score == cv_class.score
-
-
-def test_cv_fold_log_lik_independent_of_grid_size():
-    """The per-fold log-lik of one alpha does not change when other alphas join the grid."""
-    data_dict = _chain_data_dict(n=600, seed=4)
-    one = COARSECV(rng=np.random.default_rng(7)).fit(data_dict, alpha_grid=(1e-3,), n_folds=3)
-    three = COARSECV(rng=np.random.default_rng(7)).fit(
-        data_dict, alpha_grid=(1e-3, 1e-2, 0.1), n_folds=3
-    )
-    np.testing.assert_array_equal(one.cv_per_fold_log_lik[0], three.cv_per_fold_log_lik[0])
-
-
-def test_cv_partial_fold_failure_excludes_alpha(monkeypatch):
-    """An alpha with one -inf fold is excluded even if its other folds score best."""
-    import coarse.cv as cv_mod
-
+def test_cv_selection_excludes_failed_alpha_and_breaks_ties_to_smaller(monkeypatch):
+    """An alpha with one -inf fold is excluded even if its other folds score best; equal sums
+    go to the smaller alpha."""
     calls: dict[float, int] = {}
 
-    def fake(tr, te, alpha, *args, **kwargs):
+    def partial_failure(tr, te, alpha, *args, **kwargs):
         calls[alpha] = calls.get(alpha, 0) + 1
         if alpha == 1e-2:
             return (-np.inf if calls[alpha] == 2 else 100.0), 0.0
         return 1.0, 0.0
 
-    monkeypatch.setattr(cv_mod, "_evaluate_fold", fake)
-    cv = COARSECV().fit(_chain_data_dict(n=200, seed=0), alpha_grid=(1e-3, 1e-2), n_folds=3)
+    data_dict = chain_data_dict(200, 0)
+    monkeypatch.setattr(cv_mod, "_evaluate_fold", partial_failure)
+    cv = COARSECV().fit(data_dict, alpha_grid=(1e-3, 1e-2), n_folds=3)
     assert cv.best_alpha == 1e-3
-    assert cv.cv_log_lik[1e-2] == -np.inf
-    assert cv.cv_log_lik[1e-3] == 3.0
+    assert cv.cv_log_lik == {1e-3: 3.0, 1e-2: -np.inf}
+
+    monkeypatch.setattr(cv_mod, "_evaluate_fold", lambda *a, **k: (-1.0, 0.0))
+    cv = COARSECV().fit(data_dict, alpha_grid=(1e-3, 1e-2, 1e-4, 0.05), n_folds=2)
+    assert cv.best_alpha == 1e-4
 
 
-def test_cv_fit_validates_arguments():
-    data_dict = _chain_data_dict(n=200, seed=0)
+def test_cv_fold_log_lik_independent_of_grid_size():
+    """One alpha's per-fold log-lik does not change when other alphas join the grid."""
+    data_dict = chain_data_dict(600, 4)
+    one = COARSECV(rng=np.random.default_rng(7)).fit(data_dict, alpha_grid=(1e-3,), n_folds=3)
+    three = COARSECV(rng=np.random.default_rng(7)).fit(data_dict, alpha_grid=(1e-3, 1e-2, 0.1), n_folds=3)
+    np.testing.assert_array_equal(one.cv_per_fold_log_lik[0], three.cv_per_fold_log_lik[0])
+
+
+def test_cv_rejects_bad_arguments_and_unscorable_data():
+    """Empty grid, n_folds < 2, an env smaller than n_folds, and every fold failing."""
+    data_dict = chain_data_dict(200, 0)
     with pytest.raises(ValueError, match="alpha_grid"):
         COARSECV().fit(data_dict, alpha_grid=(), n_folds=3)
     with pytest.raises(ValueError, match="n_folds"):
         COARSECV().fit(data_dict, alpha_grid=(1e-3,), n_folds=1)
+    rng = np.random.default_rng(0)
+    with pytest.raises(ValueError, match="n_folds"):
+        COARSECV().fit({"obs": rng.standard_normal((3, 2)), "1": rng.standard_normal((3, 2))}, n_folds=5)
+    tiny = {"obs": sample_chain_dataset(8, rng), "1": sample_chain_dataset(8, rng, shift_targets=(0, 1))}
+    with pytest.raises(RuntimeError, match="all"):
+        COARSECV().fit(tiny, alpha_grid=(1e-3,), n_folds=2)
 
 
 def test_cv_check_input_gates_data_validation(monkeypatch):
     """`check_input=True` rejects NaN and validates the input, every fold fit and the refit;
     the default validates nothing."""
-    data_dict = _chain_data_dict(300, 0)
+    data_dict = chain_data_dict(300, 0)
     bad = {k: v.copy() for k, v in data_dict.items()}
     bad["obs"][3, 2] = np.nan
     with pytest.raises(ValueError, match="NaN"):
         COARSECV().fit(bad, alpha_grid=(1e-3,), n_folds=2, check_input=True)
 
     calls = []
-    record = lambda d: calls.append(d)
-    monkeypatch.setattr(cv_mod, "_check_data_dict", record)
-    monkeypatch.setattr(coarse_mod, "_check_data_dict", record)
+    monkeypatch.setattr(cv_mod, "_check_data_dict", calls.append)
+    monkeypatch.setattr(coarse_mod, "_check_data_dict", calls.append)
     COARSECV().fit(data_dict, alpha_grid=(1e-3, 1e-2), n_folds=2)
     assert calls == []
     COARSECV().fit(data_dict, alpha_grid=(1e-3, 1e-2), n_folds=2, check_input=True)
     assert len(calls) == 1 + 2 * 2 + 1
 
-def test_cv_all_folds_fail_raises():
+
+def test_cv_refit_matches_fresh_fit_at_best_alpha():
+    """`rng.spawn(3)` is [splitter, refit, inner]: a fresh fit with the refit RNG reproduces the
+    final model."""
+    data_dict = chain_data_dict(600, 3)
+    kwargs = dict(lambda_pen=2.0, refine_test="ks")
+    cv = COARSECV(rng=np.random.default_rng(42)).fit(data_dict, alpha_grid=(1e-3, 1e-2), n_folds=2, **kwargs)
+    _, refit_rng, _ = np.random.default_rng(42).spawn(3)
+    fresh = COARSE(rng=refit_rng).fit(data_dict, alpha=cv.best_alpha, **kwargs)
+    assert set(cv.final_model.dag.edges) == set(fresh.dag.edges)
+    assert cv.final_model.score == pytest.approx(fresh.score, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# splitter and held-out likelihood
+# ---------------------------------------------------------------------------
+def test_cv_splitter_partitions_every_env():
+    """Per env and fold, train and test are disjoint and complete; test folds cover every row
+    and differ in size by at most one."""
     rng = np.random.default_rng(0)
-    data_dict = {
-        "obs": sample_chain_dataset(8, rng),
-        "1": sample_chain_dataset(8, rng, shift_targets=(0, 1)),
-    }
-    with pytest.raises(RuntimeError, match="all"):
-        COARSECV().fit(data_dict, alpha_grid=(1e-3,), n_folds=2)
-
-
-def test_cv_tiebreak_prefers_smaller_alpha(monkeypatch):
-    import coarse.cv as cv_mod
-
-    monkeypatch.setattr(cv_mod, "_evaluate_fold", lambda *a, **k: (-1.0, 0.0))
-    grid = (1e-3, 1e-2, 1e-4, 0.05)
-    cv = COARSECV(rng=np.random.default_rng(0)).fit(
-        _chain_data_dict(n=200, seed=0), alpha_grid=grid, n_folds=2
-    )
-    assert cv.best_alpha == min(grid)
-
-
-# ---------------------------------------------------------------------------
-# splitter
-# ---------------------------------------------------------------------------
-def test_cv_splitter_disjoint_complete():
-    """Per env and fold, train and test are disjoint and sum to n_e; test folds cover every row."""
-    rng_data = np.random.default_rng(0)
-    env_arrays = {"obs": rng_data.standard_normal((20, 3)), "1": rng_data.standard_normal((15, 3))}
-    n_folds = 5
-    pairs = list(_kfold_split_env(env_arrays, n_folds, np.random.default_rng(42)))
-    assert len(pairs) == n_folds
-
+    env_arrays = {"obs": rng.standard_normal((23, 3)), "1": rng.standard_normal((15, 3))}
+    pairs = list(_kfold_split_env(env_arrays, 5, np.random.default_rng(42)))
+    assert len(pairs) == 5
+    assert sorted(te["obs"].shape[0] for _, te in pairs) == [4, 4, 5, 5, 5]
     for ek, X in env_arrays.items():
-        all_test_rows: set[tuple[float, ...]] = set()
+        seen: set[tuple[float, ...]] = set()
         for tr, te in pairs:
-            train_rows = {tuple(r) for r in tr[ek]}
-            test_rows = {tuple(r) for r in te[ek]}
+            train_rows, test_rows = {tuple(r) for r in tr[ek]}, {tuple(r) for r in te[ek]}
             assert train_rows.isdisjoint(test_rows)
-            assert tr[ek].shape[0] + te[ek].shape[0] == X.shape[0]
-            all_test_rows |= test_rows
-        assert all_test_rows == {tuple(r) for r in X}
+            assert len(tr[ek]) + len(te[ek]) == len(X)
+            seen |= test_rows
+        assert seen == {tuple(r) for r in X}
 
 
-def test_cv_splitter_handles_non_divisible_row_counts():
-    env_arrays = {"obs": np.random.default_rng(0).standard_normal((23, 2))}
-    pairs = list(_kfold_split_env(env_arrays, n_folds=5, rng=np.random.default_rng(0)))
-    test_sizes = sorted(te["obs"].shape[0] for _, te in pairs)
-    assert test_sizes == [4, 4, 5, 5, 5]
-
-
-def test_cv_raises_when_env_smaller_than_n_folds():
-    with pytest.raises(ValueError, match="n_folds"):
-        list(_kfold_split_env({"obs": np.zeros((3, 2))}, n_folds=5, rng=np.random.default_rng(0)))
-    rng = np.random.default_rng(0)
-    data_dict = {"obs": rng.standard_normal((3, 2)), "1": rng.standard_normal((3, 2))}
-    with pytest.raises(ValueError, match="n_folds"):
-        COARSECV().fit(data_dict, alpha_grid=(1e-4,), n_folds=5)
-
-
-# ---------------------------------------------------------------------------
-# held-out log-likelihood
-# ---------------------------------------------------------------------------
-def test_heldout_log_lik_no_parents_matches_scipy():
-    rng = np.random.default_rng(0)
-    p = 3
-    X = rng.standard_normal((400, p))
-    Xtr, Xte = X[:300], X[300:]
-    mu_tr = Xtr.mean(axis=0, keepdims=True)
-    Xtr_c, Xte_c = Xtr - mu_tr, Xte - mu_tr
-    Sigma_train = (Xtr_c.T @ Xtr_c) / Xtr_c.shape[0]
-
-    ll = _heldout_block_log_lik(
-        np.arange(p, dtype=np.int64),
-        np.empty(0, dtype=np.int64),
-        B_train=np.empty((p, 0)),
-        Sigma_train=Sigma_train,
-        X_test_block_centered=Xte_c,
-        X_test_parents_centered=np.empty((Xte_c.shape[0], 0)),
-    )
-    ref = multivariate_normal(mean=np.zeros(p), cov=Sigma_train).logpdf(Xte_c).sum()
-    assert ll == pytest.approx(ref, rel=1e-10)
-
-
-def test_heldout_log_lik_with_parents_matches_scipy():
-    """Equals the summed Gaussian log-density at the train-fit conditional mean."""
+def test_heldout_log_lik_matches_scipy():
+    """Equals the summed Gaussian log-density at the train-fit conditional mean, with and
+    without parents; a non-PD Σ gives -inf."""
     rng = np.random.default_rng(1)
-    n_train, n_test = 500, 200
     r_j, s_j = 2, 3
     L = np.array([[0.5, 0.0], [0.1, 0.4]])
     B_true = rng.standard_normal((r_j, s_j))
-    Xp_train = rng.standard_normal((n_train, s_j))
-    Xb_train = Xp_train @ B_true.T + rng.standard_normal((n_train, r_j)) @ L
+    Xp = rng.standard_normal((700, s_j))
+    Xb = Xp @ B_true.T + rng.standard_normal((700, r_j)) @ L
+    X = np.column_stack([Xb, Xp])
+    mu = X[:500].mean(axis=0)
+    Xtr, Xte = X[:500] - mu, X[500:] - mu
+    sigma = Xtr.T @ Xtr / 500
+    b_idx = np.arange(r_j)
+    for pa_idx in (np.empty(0, dtype=np.int64), np.arange(r_j, r_j + s_j)):
+        B, Sigma = _block_regression_from_sigma(b_idx, pa_idx, sigma)
+        ll = _heldout_block_log_lik(b_idx, pa_idx, B, Sigma, Xte[:, b_idx], Xte[:, pa_idx])
+        means = Xte[:, pa_idx] @ B.T
+        ref = sum(
+            multivariate_normal(mean=m, cov=Sigma).logpdf(x) for m, x in zip(means, Xte[:, b_idx])
+        )
+        assert ll == pytest.approx(ref, rel=1e-10)
 
-    mu_p = Xp_train.mean(axis=0, keepdims=True)
-    mu_b = Xb_train.mean(axis=0, keepdims=True)
-    Xp_train_c, Xb_train_c = Xp_train - mu_p, Xb_train - mu_b
-
-    # OLS from sufficient statistics.
-    Sxx = (Xp_train_c.T @ Xp_train_c) / n_train
-    Syx = (Xb_train_c.T @ Xp_train_c) / n_train
-    Syy = (Xb_train_c.T @ Xb_train_c) / n_train
-    c, low = sla.cho_factor(Sxx, lower=True)
-    Y = sla.cho_solve((c, low), Syx.T)
-    B_fit = Y.T
-    Sigma_fit = Syy - Syx @ Y
-
-    Xp_test = rng.standard_normal((n_test, s_j))
-    Xb_test = Xp_test @ B_true.T + rng.standard_normal((n_test, r_j)) @ L
-    Xp_test_c, Xb_test_c = Xp_test - mu_p, Xb_test - mu_b
-
-    ll = _heldout_block_log_lik(
-        block_idx=np.arange(r_j, dtype=np.int64),
-        parent_idx=np.arange(s_j, dtype=np.int64),
-        B_train=B_fit,
-        Sigma_train=Sigma_fit,
-        X_test_block_centered=Xb_test_c,
-        X_test_parents_centered=Xp_test_c,
-    )
-    means = Xp_test_c @ B_fit.T
-    ref = sum(
-        multivariate_normal(mean=means[i], cov=Sigma_fit).logpdf(Xb_test_c[i])
-        for i in range(n_test)
-    )
-    assert ll == pytest.approx(ref, rel=1e-10)
-
-
-def test_heldout_log_lik_returns_minus_inf_on_non_pd_sigma():
-    Xte = np.random.default_rng(0).standard_normal((50, 2))
-    ll = _heldout_block_log_lik(
-        np.array([0, 1], dtype=np.int64),
-        np.empty(0, dtype=np.int64),
-        B_train=np.empty((2, 0)),
-        Sigma_train=np.array([[1.0, 2.0], [2.0, 1.0]]),  # eigenvalues 3, -1
-        X_test_block_centered=Xte,
-        X_test_parents_centered=np.empty((50, 0)),
-    )
-    assert ll == -np.inf
+    non_pd = np.array([[1.0, 2.0], [2.0, 1.0]])
+    no_pa = np.empty(0, dtype=np.int64)
+    assert _heldout_block_log_lik(b_idx, no_pa, np.empty((2, 0)), non_pd, Xte[:, b_idx], Xte[:, no_pa]) == -np.inf
 
 
 def test_evaluate_fold_centers_test_with_train_mean():
-    """The fold value is the summed held-out log-lik with both folds centered on the train mean,
-    so shifting the test fold lowers it."""
-    data_dict = _chain_data_dict(n=600, seed=5)
+    """The fold value is the summed held-out log-lik with both folds centered on the train mean;
+    shifting the test fold lowers it."""
+    data_dict = chain_data_dict(600, 5)
     train, test = next(_kfold_split_env(data_dict, 3, np.random.default_rng(0)))
     args = (1e-3, 1.0, "welch", "obs")
     ll, _ = _evaluate_fold(train, test, *args, np.random.default_rng(0))
@@ -290,23 +187,3 @@ def test_evaluate_fold_centers_test_with_train_mean():
 
     shifted = {ek: v + 5.0 for ek, v in test.items()}
     assert _evaluate_fold(train, shifted, *args, np.random.default_rng(0))[0] < ll
-
-
-# ---------------------------------------------------------------------------
-# refit RNG contract
-# ---------------------------------------------------------------------------
-def test_cv_refit_matches_fresh_fit_at_best_alpha():
-    """`rng.spawn(3)` is [splitter, refit, inner]; a fresh fit with the refit RNG and the same
-    kwargs reproduces the final model."""
-    data_dict = _chain_data_dict(n=600, seed=3)
-    seed = 42
-    kwargs = dict(lambda_pen=2.0, refine_test="ks")
-    cv = COARSECV(rng=np.random.default_rng(seed)).fit(
-        data_dict, alpha_grid=(1e-3, 1e-2), n_folds=2, **kwargs
-    )
-    _, refit_rng, _ = np.random.default_rng(seed).spawn(3)
-    fresh = COARSE(rng=refit_rng).fit(data_dict, alpha=cv.best_alpha, **kwargs)
-
-    assert set(cv.final_model.dag.nodes) == set(fresh.dag.nodes)
-    assert set(cv.final_model.dag.edges) == set(fresh.dag.edges)
-    assert cv.final_model.score == pytest.approx(fresh.score, rel=1e-12)

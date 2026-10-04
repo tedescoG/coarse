@@ -1,4 +1,5 @@
-# Penalty multiplier λ under the true partition: COARSEOracle, er, ivn 5.
+# BIC penalty multiplier λ, true partition (er, p=50, 5 envs). Per density: x=λ, y=P | R | F1,
+# hue=n, dashed λ=1.
 LS_LAMBDAS = [0.25, 0.5, 1.0, 2.0, 4.0]
 LS_NODES = [10] if SMOKE else [50]
 LS_DENSITIES = [0.2, 0.5]

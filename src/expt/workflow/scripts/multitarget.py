@@ -1,8 +1,6 @@
-"""Population gap between the env partition Π^E and the interventional partition Π^I on one
-random DAG, for three target designs: `native` (sempler targets, k per env, m envs),
-`disjoint` (a fixed pool S split into |S|/k envs) and `overlap` (the disjoint cover of S plus
-random k-subsets of S, m envs in total). `hidden` is the fraction of true edges between Π^I
-blocks that fall inside one Π^E block."""
+"""Π^E vs Π^I on one DAG. Designs: `native` (sempler, k targets × m envs), `disjoint` (pool S split
+into |S|/k envs), `overlap` (that cover plus random k-subsets of S, m envs). `hidden`: share of true
+edges between Π^I blocks that fall inside one Π^E block."""
 
 import networkx as nx
 import numpy as np

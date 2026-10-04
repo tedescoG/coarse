@@ -1,5 +1,4 @@
-"""Per-block parent recovery of a COARSEOracle fit: one row per block with a true parent, with
-its family size in variables (`F`) and in the fit's reduced units (`F_method`)."""
+"""Per-block parent recovery; `F` / `F_method`: family size in variables / in the fit's units."""
 
 import pickle
 

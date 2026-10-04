@@ -1,4 +1,5 @@
-"""Helpers shared by the Snakemake scripts (importable, unlike `script:` files)."""
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
+"""Helpers shared by the Snakemake scripts."""
 from __future__ import annotations
 
 import re
@@ -266,11 +267,7 @@ def make_weights(graph: str, p: int, avg_deg: float, seed: int) -> np.ndarray:
 
 def make_dataset(graph: str, p: int, num_intervs: int, avg_deg: float, seed: int, n: int,
                  targets_size=1, noise: str = "gaussian", shift=(2.0, 1.0)):
-    """Observational and shift-interventional samples from an iSCM.
-
-    Returns `(W, targets, data)`: the standardized weights and `{"obs", "0", "1", …}` in target
-    order. `targets_size` is sempler's target `size` (int or (min, max)).
-    """
+    """`(W, targets, data)` of an iSCM: standardized weights and `{"obs", "0", "1", …}` shift envs."""
     from sempler.generators import intervention_targets
 
     W = make_weights(graph, p, avg_deg, seed)

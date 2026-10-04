@@ -1,4 +1,5 @@
-# Noise families under the true partition: COARSEOracle, er, ivn 5, density 0.2.
+# Score step under non-Gaussian noise, true partition (er, 5 envs, density 0.2). One plot per p:
+# x=n, y=F1, hue=noise.
 NOISE_DIR = RESULTS + "noise/"
 
 

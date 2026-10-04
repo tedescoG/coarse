@@ -20,6 +20,7 @@
 /src/expt/results/smoke/
 /src/expt/results/causalchamber/preprocessed/
 /src/expt/results/*.log
+/src/expt/logs/
 /src/expt/data/
 
 # editor / OS

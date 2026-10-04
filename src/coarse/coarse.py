@@ -1,3 +1,4 @@
+# Adapted from RePaRe (https://github.com/Alex-Markham/repare, v0.2.0), GPL-3.0-or-later.
 """COARSE (partition and block DAG from data) and COARSEOracle (block DAG given the partition)."""
 
 from __future__ import annotations
@@ -28,9 +29,8 @@ def _project_blocks(
     k: int | None,
     baseline_key: EnvKey,
 ) -> tuple[dict[EnvKey, np.ndarray], list[Block], dict[Block, Block]]:
-    """kPC-COARSE: project every env's block onto the block's top-k right singular vectors
-    of the baseline env; `k=None` projects onto the block mean. Returns the projected arrays,
-    partition and block map."""
+    """Project each block onto its top-k right singular vectors in the baseline env (kPC), or onto
+    the block mean when `k=None` (avg)."""
     offset = 0
     proj_partition: list[Block] = []
     block_map: dict[Block, Block] = {}
@@ -224,14 +224,8 @@ def _run_score_phase(
 
 
 class COARSE:
-    """Block-level score-based causal discovery from soft interventions.
-
-    `fit` sets: `partition` (Π_E), `M`, `env_order` (columns of M), `supports`,
-    `candidate_pools`, `linear_extension_` (τ), `parent_sets`, `dag` (nodes are
-    `tuple(sorted(block))`), `score` (total BIC), `num_features`, `fit_metadata`,
-    `fit_runtime_sec` (excludes input validation) and `check_runtime_sec` (input validation,
-    run only with `check_input=True`).
-    """
+    """Partition and block DAG from soft interventions. `fit` sets `partition`, `M`, `env_order`,
+    `parent_sets`, `dag` (nodes `tuple(sorted(block))`), `score` and `fit_runtime_sec`."""
 
     def __init__(self, rng: np.random.Generator | None = None) -> None:
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -253,10 +247,8 @@ class COARSE:
         start = time.perf_counter()
 
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
-        # Independent streams for the tests and the score step.
         rng_M, rng_gs = self.rng.spawn(2)
 
-        # Descendant test: M from marginal two-sample tests.
         M, env_order = compute_M(
             env_arrays,
             alpha=alpha,
@@ -265,7 +257,6 @@ class COARSE:
             baseline_key=baseline_key,
         )
 
-        # Partition refinement.
         partition = infer_partition(M)
 
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(

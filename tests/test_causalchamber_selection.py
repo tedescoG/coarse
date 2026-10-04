@@ -28,34 +28,35 @@ from _causalchamber_common import (
 )
 
 
-def _row(alpha, beta, score, ari=0.0, f1=0.0):
-    return {"alpha": alpha, "beta": beta, "score": score, "ari": ari, "f1": f1}
+def test_grid_selection_rules():
+    """Score row: min score, ties to smaller α then β. Oracle row: max ARI, then F1, then smaller α
+    and β (β optional). UT-IGSP: min BIC / max F1·precision, ties to the first cell in grid order."""
+    def row(alpha, beta, score, ari=0.0, f1=0.0):
+        return {"alpha": alpha, "beta": beta, "score": score, "ari": ari, "f1": f1}
 
+    assert select_score_row([
+        row(1e-4, 1e-4, 2.0, ari=1.0), row(1e-2, 1e-4, 1.0, ari=1.0),
+        row(1e-3, 1e-1, 1.0), row(1e-3, 1e-3, 1.0),
+    ]) == row(1e-3, 1e-3, 1.0)
+    assert select_oracle_row([
+        row(1e-4, 1e-4, 1.0, ari=0.2, f1=1.0), row(1e-4, 1e-4, 9.0, ari=0.9, f1=0.1),
+        row(1e-2, 1e-4, 9.0, ari=0.9, f1=0.9), row(1e-3, 1e-2, 9.0, ari=0.9, f1=0.9),
+        row(1e-3, 1e-3, 9.0, ari=0.9, f1=0.9),
+    ]) == row(1e-3, 1e-3, 9.0, ari=0.9, f1=0.9)
+    no_beta = [{"alpha": 1e-2, "ari": 1.0, "f1": 0.5}, {"alpha": 1e-3, "ari": 1.0, "f1": 0.5}]
+    assert select_oracle_row(no_beta) == no_beta[1]
 
-def test_select_oracle_row_max_ari_then_f1_then_smaller_alpha_and_beta():
-    records = [
-        _row(1e-4, 1e-4, 1.0, ari=0.2, f1=1.0),
-        _row(1e-4, 1e-4, 9.0, ari=0.9, f1=0.1),
-        _row(1e-2, 1e-4, 9.0, ari=0.9, f1=0.9),
-        _row(1e-3, 1e-2, 9.0, ari=0.9, f1=0.9),
-        _row(1e-3, 1e-3, 9.0, ari=0.9, f1=0.9),
-    ]
-    assert select_oracle_row(records) == _row(1e-3, 1e-3, 9.0, ari=0.9, f1=0.9)
+    def ut(alpha_ci, alpha_inv, bic, f1=0.0, precision=0.0):
+        return {"alpha_ci": alpha_ci, "alpha_inv": alpha_inv, "bic": bic, "f1": f1, "precision": precision}
 
-
-def test_select_oracle_row_without_beta():
-    records = [{"alpha": 1e-2, "ari": 1.0, "f1": 0.5}, {"alpha": 1e-3, "ari": 1.0, "f1": 0.5}]
-    assert select_oracle_row(records) == {"alpha": 1e-3, "ari": 1.0, "f1": 0.5}
-
-
-def test_select_score_row_min_score_then_smaller_alpha_and_beta():
-    records = [
-        _row(1e-4, 1e-4, 2.0, ari=1.0),
-        _row(1e-2, 1e-4, 1.0, ari=1.0),
-        _row(1e-3, 1e-1, 1.0, ari=0.0),
-        _row(1e-3, 1e-3, 1.0, ari=0.0),
-    ]
-    assert select_score_row(records) == _row(1e-3, 1e-3, 1.0, ari=0.0)
+    assert select_utigsp_score_row([
+        ut(1e-2, 1e-2, 10.0, f1=1.0), ut(1e-3, 1e-1, 5.0), ut(1e-3, 1e-2, 5.0), ut(1e-4, 1e-1, 5.0),
+    ]) == ut(1e-4, 1e-1, 5.0)
+    assert select_utigsp_oracle_row([
+        ut(1e-4, 1e-4, 1.0, f1=0.9, precision=0.5),
+        ut(1e-2, 1e-2, 2.0, f1=0.8, precision=0.7),
+        ut(1e-3, 1e-3, 9.0, f1=0.8, precision=0.7),
+    ]) == ut(1e-3, 1e-3, 9.0, f1=0.8, precision=0.7)
 
 
 def _true_chain():
@@ -86,33 +87,6 @@ def test_ground_truth_partition_matches_infer_partition_blocks():
     M = np.array([[1, 0], [1, 0], [1, 1], [0, 1], [1, 1]], dtype=bool)
     assert {frozenset(b) for b in partition} == set(infer_partition(M))
     assert all(labels[i] == labels[j] for b in partition for i in b for j in b)
-
-
-def _ut_row(alpha_ci, alpha_inv, bic, f1=0.0, precision=0.0):
-    return {
-        "alpha_ci": alpha_ci, "alpha_inv": alpha_inv, "bic": bic,
-        "f1": f1, "precision": precision,
-    }
-
-
-def test_select_utigsp_score_row_min_bic_then_smaller_alphas():
-    records = [
-        _ut_row(1e-2, 1e-2, 10.0, f1=1.0),
-        _ut_row(1e-3, 1e-1, 5.0),
-        _ut_row(1e-3, 1e-2, 5.0),
-        _ut_row(1e-4, 1e-1, 5.0),
-    ]
-    assert select_utigsp_score_row(records) == _ut_row(1e-4, 1e-1, 5.0)
-
-
-def test_select_utigsp_oracle_row_max_f1_times_precision():
-    records = [
-        _ut_row(1e-4, 1e-4, 1.0, f1=0.9, precision=0.5),   # 0.45
-        _ut_row(1e-2, 1e-2, 2.0, f1=0.8, precision=0.7),   # 0.56, later in grid order
-        _ut_row(1e-3, 1e-3, 9.0, f1=0.8, precision=0.7),   # 0.56 tie -> first in grid order
-    ]
-    # Ties go to the first cell in grid order.
-    assert select_utigsp_oracle_row(records) == _ut_row(1e-3, 1e-3, 9.0, f1=0.8, precision=0.7)
 
 
 def test_baseline_env_lists_is_the_ungrouped_regime():

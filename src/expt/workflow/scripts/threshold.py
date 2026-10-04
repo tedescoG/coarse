@@ -1,8 +1,5 @@
-"""Descendant-test cutoff rules on one synthetic dataset: uncorrected α over a grid,
-Bonferroni / BH / BY at level q, COARSECV, and the oracle α (max ARI over the grid, ties to the
-smaller α). All rules share one Welch p-value matrix; ARI is that of the induced partition.
-`nominal` is the level fixed in advance (NaN for the data-chosen CV and oracle α), `cutoff` the
-per-test cutoff applied."""
+"""Partition ARI of each cutoff rule on one dataset. `nominal`: level fixed in advance (NaN for CV
+and oracle α); `cutoff`: per-test cutoff applied."""
 
 import numpy as np
 import pandas as pd

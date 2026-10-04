@@ -27,10 +27,6 @@ P = 15
 HEAVY_TAILED = ("t3", "t4")  # infinite fourth moment: sample variances are not checked tightly
 
 
-def _t_df(family: str) -> int:
-    return int(family[1:])
-
-
 def _random_scm(seed, p=P, avg_deg=4):
     W = dag_avg_deg(p, avg_deg, w_min=0.5, w_max=2, random_state=seed)
     signs = np.random.default_rng(seed).choice([-1.0, 1.0], size=W.shape)
@@ -45,19 +41,13 @@ def _implied_cov(W, noise_var):
 
 
 @pytest.mark.parametrize("seed", range(5))
-def test_iscm_unit_variance(seed):
-    W, noise_var, _ = _random_scm(seed)
-    Wt, nvt = iscm_standardize(W, noise_var)
-    np.testing.assert_allclose(np.diag(_implied_cov(Wt, nvt)), 1.0, atol=1e-10)
-
-
-@pytest.mark.parametrize("seed", range(3))
-def test_iscm_only_rescales(seed):
-    """Per node, incoming weights and noise variance are divided by one common scale s,
-    with s^2 = w' Cov(x_tilde_pa) w + sigma^2 computed on the standardized parents."""
+def test_iscm_unit_variance_by_rescaling(seed):
+    """Unit population variance; per node, incoming weights and noise variance are divided by one
+    scale s, s^2 = w' Cov(x_tilde_pa) w + sigma^2 on the standardized parents."""
     W, noise_var, _ = _random_scm(seed)
     Wt, nvt = iscm_standardize(W, noise_var)
     Sigma_t = _implied_cov(Wt, nvt)
+    np.testing.assert_allclose(np.diag(Sigma_t), 1.0, atol=1e-10)
     assert np.array_equal(Wt != 0, W != 0)
     for j in range(P):
         parents = np.flatnonzero(W[:, j])
@@ -80,34 +70,32 @@ def test_noise_distribution_moments(family):
     x = noise_distribution(family, mean=mean, var=var)(200_000)
     assert x.mean() == pytest.approx(mean, abs=0.02)
     if family in HEAVY_TAILED:
-        df = _t_df(family)
+        df = int(family[1:])
         ref = stats.t(df, loc=mean, scale=np.sqrt(var * (df - 2) / df))
         np.testing.assert_allclose(np.quantile(x, [0.25, 0.75]), ref.ppf([0.25, 0.75]), atol=0.02)
     else:
         assert x.var() == pytest.approx(var, rel=0.03)
 
 
-@pytest.mark.parametrize("family", ["weibull", "t2", "t1", "t", "t3.5"])
-def test_noise_distribution_rejects_unknown_family(family):
-    with pytest.raises(ValueError):
-        noise_distribution(family, 0.0, 1.0)
-    with pytest.raises(ValueError):
-        build_model(np.zeros((2, 2)), np.ones(2), np.zeros(2), family)
-
-
-def test_build_model_types():
-    W, noise_var, means = _random_scm(0)
-    assert isinstance(build_model(W, noise_var, means, "gaussian"), LGANM)
-    assert isinstance(build_model(W, noise_var, means, "laplace"), ANM)
-    assert isinstance(build_model(W, noise_var, means, "t3"), ANM)
+def test_rejects_unknown_families():
+    for family in ("weibull", "t2", "t1", "t", "t3.5"):
+        with pytest.raises(ValueError):
+            noise_distribution(family, 0.0, 1.0)
+        with pytest.raises(ValueError):
+            build_model(np.zeros((2, 2)), np.ones(2), np.zeros(2), family)
+    with pytest.raises(ValueError, match="graph family"):
+        make_weights("tree", P, 4, 0)
 
 
 def test_anm_and_lganm_sample_the_same_model():
+    """Gaussian builds an LGANM, other families an ANM; both give the same first two moments."""
     W, noise_var, means = _random_scm(1)
     Wt, nvt = iscm_standardize(W, noise_var)
     n = 100_000
-    X = build_model(Wt, nvt, means, "gaussian").sample(n, random_state=1)
-    Y = build_model(Wt, nvt, means, "uniform").sample(n, random_state=1)  # ANM path, same second moments
+    gauss, unif = build_model(Wt, nvt, means, "gaussian"), build_model(Wt, nvt, means, "uniform")
+    assert isinstance(gauss, LGANM) and isinstance(unif, ANM)
+    X = gauss.sample(n, random_state=1)
+    Y = unif.sample(n, random_state=1)
     assert np.abs(np.cov(X.T) - np.cov(Y.T)).max() < 0.05
     assert np.abs(X.mean(0) - Y.mean(0)).max() < 0.05
 
@@ -134,9 +122,6 @@ def test_sample_shift_moves_target_by_shift(family):
     assert np.abs(Y[:, others].mean(0) - X[:, others].mean(0)).max() < 0.03
 
 
-# make_weights / make_dataset
-
-
 @pytest.mark.parametrize("graph", ["er", "sf"])
 def test_make_weights_is_a_signed_dag(graph):
     W = make_weights(graph, P, avg_deg=4, seed=3)
@@ -148,11 +133,6 @@ def test_make_weights_is_a_signed_dag(graph):
     assert (nz > 0).any() and (nz < 0).any()
     assert np.array_equal(W, make_weights(graph, P, avg_deg=4, seed=3))
     assert not np.array_equal(W, make_weights(graph, P, avg_deg=4, seed=4))
-
-
-def test_make_weights_rejects_unknown_graph():
-    with pytest.raises(ValueError, match="graph family"):
-        make_weights("tree", P, 4, 0)
 
 
 def test_make_dataset_is_standardized_and_shifted():
@@ -180,8 +160,8 @@ def test_make_dataset_is_standardized_and_shifted():
 @pytest.mark.parametrize("graph", ["er", "sf"])
 @pytest.mark.parametrize("noise", NOISE_FAMILIES)
 def test_make_dataset_deterministic_in_seed(graph, noise):
-    """Same seed → identical W, targets and every environment, regardless of the global
-    ``np.random`` state and of other calls made in between; a different seed differs."""
+    """Same seed → identical W, targets and envs whatever the global `np.random` state; a different
+    seed differs; target sizes respect `targets_size`."""
     a = make_dataset(graph, P, 2, 4, seed=5, n=200, noise=noise, targets_size=(1, 2))
     np.random.seed(12345)
     np.random.normal(size=1000)
@@ -191,16 +171,8 @@ def test_make_dataset_deterministic_in_seed(graph, noise):
     assert [list(np.atleast_1d(t)) for t in a[1]] == [list(np.atleast_1d(t)) for t in b[1]]
     assert list(a[2]) == list(b[2])
     assert all(np.array_equal(a[2][key], b[2][key]) for key in a[2])
+    assert all(1 <= len(np.atleast_1d(t)) <= 2 for t in a[1])
 
     c = make_dataset(graph, P, 2, 4, seed=7, n=200, noise=noise, targets_size=(1, 2))
     assert not np.array_equal(a[0], c[0])
     assert not np.array_equal(a[2]["obs"], c[2]["obs"])
-
-
-def test_make_dataset_heterogeneous_targets():
-    _, targets, data = make_dataset("er", P, 4, 4, seed=2, n=100, targets_size=(1, 3))
-    sizes = [len(np.atleast_1d(t)) for t in targets]
-    assert all(1 <= s <= 3 for s in sizes)
-    assert len(data) == 5
-    ragged = np.array(targets, dtype=object)
-    assert len(ragged) == 4

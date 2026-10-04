@@ -1,6 +1,4 @@
-"""COARSECV on one dataset with k targets per env. ARI of the estimated partition against the
-env partition Π^E (`ari_E`) and the interventional partition Π^I (`ari_I`); `ari_pop` is the
-population ARI(Π^E, Π^I)."""
+"""COARSECV partition ARI against Π^E (`ari_E`) and Π^I (`ari_I`); `ari_pop` = ARI(Π^E, Π^I)."""
 
 import numpy as np
 import pandas as pd
