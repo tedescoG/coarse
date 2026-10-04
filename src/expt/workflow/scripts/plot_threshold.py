@@ -75,10 +75,10 @@ order = [f"d={d}\nn={n // 1000}k" for n in N for d in D]
 fig, ax = plt.subplots(figsize=(3.2 * len(order), 6.4))
 sns.boxplot(gap, x="setting", y="gap", hue="rule", order=order, hue_order=RULES[:-1],
             palette=COLOR, linewidth=1.0, ax=ax)
-ax.axhline(0, **ps.REF_LINE)
+ref = ax.axhline(0, **ps.REF_LINE)
 ax.set_xlabel("")
-ax.set_ylabel(r"$\widehat{\mathrm{ARI}} - \mathrm{ARI}$")
+ax.set_ylabel("ARI gap")
 handles, _ = ax.get_legend_handles_labels()
-ax.legend(handles, [DISPLAY[r] for r in RULES[:-1]], ncol=len(RULES) - 1, loc="upper center",
-          bbox_to_anchor=(0.5, -0.2), frameon=False)
+ax.legend(handles + [ref], [DISPLAY[r] for r in RULES[:-1]] + ["oracle"], ncol=len(RULES),
+          loc="upper center", bbox_to_anchor=(0.5, -0.2), frameon=False)
 ps.finish(fig, snakemake.output.gap)

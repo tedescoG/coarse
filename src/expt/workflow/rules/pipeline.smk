@@ -77,3 +77,18 @@ rule multitarget_cell:
         overlap_m=[4, 5, 10, 15, 20, 30, 40],
     script:
         "../scripts/multitarget.py"
+
+
+rule multitarget_fit_cell:
+    input:
+        data=DATA + "dataset.npz",
+    output:
+        MTFIT + "metrics.csv",
+    resources:
+        mem_mb=cell_mem_mb,
+    params:
+        lambda_pen=LAMBDA_PEN,
+        refine_test=REFINE_TEST,
+        intervention_type=INTERVENTION_TYPE,
+    script:
+        "../scripts/multitarget_fit.py"

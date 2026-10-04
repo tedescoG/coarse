@@ -4,6 +4,7 @@
 #   ORACLE    results/_run/oracle/method=…/noise=…/lambda_pen=…/<cell>/{model.pkl,metrics.csv}
 #   THRESHOLD results/_run/threshold/noise=…/tpi=…/<cell>/metrics.csv
 #   MULTITARGET results/_run/multitarget/graph=…/num_nodes=…/density=…/seed=…/metrics.csv
+#   MTFIT     results/_run/multitarget_fit/noise=…/tpi=…/<cell>/metrics.csv
 from itertools import product
 
 CELL = (
@@ -23,6 +24,7 @@ MULTITARGET = (
     "results/_run/multitarget/graph={graph}/num_nodes={num_nodes}/"
     "density={density}/seed={seed}/"
 )
+MTFIT = "results/_run/multitarget_fit/noise={noise}/tpi={targets_per_interv}/" + CELL
 # Oracle fits use single-target data; noise.smk sweeps the noise wildcard.
 ORACLE_DATA = DATA.replace("{targets_per_interv}", "1")
 DEFAULT = dict(noise=["gaussian"], targets_per_interv=["1"])
