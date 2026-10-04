@@ -57,6 +57,17 @@ def build_oracle_partition(weights: np.ndarray, targets, num_nodes: int):
     return true_dag, M_true, env_order, partition
 
 
+def interventional_partition(weights: np.ndarray, targets, num_nodes: int):
+    """Partition from single-target signatures: row classes of 1[v ∈ {t} ∪ de(t)] over every
+    target t of any env."""
+    true_dag = nx.DiGraph(weights.astype(bool))
+    nodes = sorted({int(n) for target in targets for n in np.atleast_1d(target)})
+    M = np.zeros((num_nodes, len(nodes)), dtype=bool)
+    for j, node in enumerate(nodes):
+        M[[node, *nx.descendants(true_dag, node)], j] = True
+    return infer_partition(M)
+
+
 def welch_pvalues(data_dict: dict) -> np.ndarray:
     """(p, m) Welch p-values of every non-baseline env against "obs", in `compute_M` column
     order."""

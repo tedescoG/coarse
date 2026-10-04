@@ -5,9 +5,29 @@ import networkx as nx
 import numpy as np
 import pytest
 
-from _common import correct, partition_edge_metrics, partition_labels, prf, welch_pvalues
+from _common import (
+    build_oracle_partition,
+    correct,
+    interventional_partition,
+    partition_edge_metrics,
+    partition_labels,
+    prf,
+    welch_pvalues,
+)
 from coarse.hypothesis_tests import compute_M
 from conftest import sample_chain_dataset
+
+
+def test_interventional_partition_single_vs_multi_target():
+    """Chain 0→1→2→3: single-target envs {0}, {2} give the env partition; env {0, 2} merges
+    {0, 1} with {2, 3} in the env partition but not in the interventional one."""
+    W = np.zeros((4, 4))
+    W[0, 1] = W[1, 2] = W[2, 3] = 1.0
+    blocks = {frozenset({0, 1}), frozenset({2, 3})}
+    assert set(interventional_partition(W, [[0], [2]], 4)) == blocks
+    assert set(build_oracle_partition(W, [[0], [2]], 4)[3]) == blocks
+    assert set(interventional_partition(W, [[0, 2]], 4)) == blocks
+    assert set(build_oracle_partition(W, [[0, 2]], 4)[3]) == {frozenset({0, 1, 2, 3})}
 
 
 def test_partition_labels_indexes_blocks_in_iteration_order():

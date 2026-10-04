@@ -1,4 +1,4 @@
-# generate → fit → evaluate for COARSE.
+# generate → fit → evaluate for COARSE; per-cell threshold and multitarget rules.
 
 
 rule generate:
@@ -63,3 +63,17 @@ rule threshold_cell:
         intervention_type=INTERVENTION_TYPE,
     script:
         "../scripts/threshold.py"
+
+
+rule multitarget_cell:
+    output:
+        MULTITARGET + "metrics.csv",
+    params:
+        pool=MT_POOL,
+        native_k=[1, 2, 3, 4, 5],
+        native_m=[2, 5, 10, 20],
+        disjoint_k=[1, 2, 4, 5, 10],
+        overlap_k=[2, 4, 5],
+        overlap_m=[4, 5, 10, 15, 20, 30, 40],
+    script:
+        "../scripts/multitarget.py"

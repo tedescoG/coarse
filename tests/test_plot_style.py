@@ -29,6 +29,21 @@ def test_method_hue_uses_okabe_ito_and_other_hues_use_mako():
     assert ps.hue_palette("density", [0.2, 0.5, 0.8]) == sns.color_palette("mako", 3)
 
 
+def test_apply_style_draws_a_light_grey_dashed_grid():
+    """Major x and y gridlines are visible, dashed and light grey."""
+    with matplotlib.rc_context():
+        ps.apply_style()
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1])
+        fig.canvas.draw()
+        lines = ax.get_xgridlines() + ax.get_ygridlines()
+        assert lines and all(line.get_visible() for line in lines)
+        assert {line.get_linestyle() for line in lines} == {"--"}
+        assert {matplotlib.colors.to_hex(line.get_color()) for line in lines} == {
+            matplotlib.colors.to_hex("lightgrey")
+        }
+        plt.close(fig)
+
 def test_place_legend_puts_a_single_panel_legend_inside_the_axes():
     """At the suite's font scale, on a single Axes, the legend's drawn box lies within the
     axes' drawn box."""

@@ -57,8 +57,11 @@ def label(column: str) -> str:
 
 
 def apply_style() -> None:
-    """Seaborn paper style; no TeX needed."""
-    sns.set_theme(style="ticks", context="paper", font_scale=2.3, palette=OKABE_ITO)
+    """Seaborn paper style with a light-grey dashed grid; no TeX needed."""
+    sns.set_theme(
+        style="ticks", context="paper", font_scale=2.3, palette=OKABE_ITO,
+        rc={"axes.grid": True, "axes.axisbelow": True, "grid.color": "lightgrey", "grid.linestyle": "--"},
+    )
 
 
 def hue_palette(column: str, levels: list):
@@ -115,6 +118,8 @@ def format_axis(axis, column: str, values=None) -> None:
 
 # Median across seeds with a bootstrap CI band.
 LINE_KWARGS = dict(dashes=True, estimator="median", errorbar="ci", linewidth=2.0, markersize=8)
+# Dashed black reference line, above the grid and below the data.
+REF_LINE = dict(ls="--", color="k", lw=1.5, zorder=0.6)
 
 
 def style_axes(ax, x, y, *, values=None, xlabel=True, ylabel=True) -> None:
@@ -169,7 +174,7 @@ def line_panel(sub, *, x, y, hue, out_path, hue_order=None, vline=None) -> None:
         ax=ax, **LINE_KWARGS,
     )
     if vline is not None:
-        ax.axvline(vline, ls="--", color="0.5", lw=1.2, zorder=0)
+        ax.axvline(vline, **REF_LINE)
     style_axes(ax, x, y, values=sorted(sub[x].unique()))
     place_legend(ax, label(hue))
     finish(fig, out_path)

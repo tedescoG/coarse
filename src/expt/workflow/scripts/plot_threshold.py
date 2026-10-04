@@ -73,10 +73,9 @@ gap["gap"] = gap.ari - gap.oracle_ari
 gap["setting"] = [f"d={d}\nn={n // 1000}k" for d, n in zip(gap.density, gap.samp_size)]
 order = [f"d={d}\nn={n // 1000}k" for n in N for d in D]
 fig, ax = plt.subplots(figsize=(3.2 * len(order), 6.4))
-kw = dict(x="setting", y="gap", hue="rule", order=order, hue_order=RULES[:-1], palette=COLOR, ax=ax)
-sns.boxplot(gap, fliersize=0, linewidth=1.0, **kw)
-sns.stripplot(gap, dodge=True, size=4, edgecolor="k", linewidth=0.3, legend=False, **kw)
-ax.axhline(0, ls="--", color="0.3", lw=1.2, zorder=0)
+sns.boxplot(gap, x="setting", y="gap", hue="rule", order=order, hue_order=RULES[:-1],
+            palette=COLOR, linewidth=1.0, ax=ax)
+ax.axhline(0, **ps.REF_LINE)
 ax.set_xlabel("")
 ax.set_ylabel(r"$\widehat{\mathrm{ARI}} - \mathrm{ARI}$")
 handles, _ = ax.get_legend_handles_labels()

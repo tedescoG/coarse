@@ -3,6 +3,7 @@
 #   PIPELINE  results/_run/pipeline/method=…/noise=…/tpi=…/<cell>/{model.pkl,metrics.csv}
 #   ORACLE    results/_run/oracle/method=…/noise=…/lambda_pen=…/<cell>/{model.pkl,metrics.csv}
 #   THRESHOLD results/_run/threshold/noise=…/tpi=…/<cell>/metrics.csv
+#   MULTITARGET results/_run/multitarget/graph=…/num_nodes=…/density=…/seed=…/metrics.csv
 from itertools import product
 
 CELL = (
@@ -18,6 +19,10 @@ ORACLE = (
     "results/_run/oracle/method={method}/noise={noise}/lambda_pen={lambda_pen}/" + CELL
 )
 THRESHOLD = "results/_run/threshold/noise={noise}/tpi={targets_per_interv}/" + CELL
+MULTITARGET = (
+    "results/_run/multitarget/graph={graph}/num_nodes={num_nodes}/"
+    "density={density}/seed={seed}/"
+)
 # Oracle fits use single-target data; noise.smk sweeps the noise wildcard.
 ORACLE_DATA = DATA.replace("{targets_per_interv}", "1")
 DEFAULT = dict(noise=["gaussian"], targets_per_interv=["1"])
@@ -46,6 +51,8 @@ INTERVENTION_TYPE = "soft"
 # the level of Bonferroni / BH / BY.
 TC_ALPHAS = [10 ** (k / 4) for k in range(-32, -3)] + [0.2]
 TC_Q = 0.05
+# multitarget: size of the fixed target pool of the disjoint and overlap designs.
+MT_POOL = 20
 # Imported by every plot script; an explicit input since Snakemake hashes only `script:`.
 PLOT_STYLE = "workflow/scripts/_plot_style.py"
 
