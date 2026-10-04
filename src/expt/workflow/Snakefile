@@ -8,7 +8,7 @@ wildcard_constraints:
     lambda_pen=r"\d+\.\d+",
     noise="gaussian|uniform|laplace|t3|t4",
     targets_per_interv=r"\d+(to\d+)?",
-    method="coarse|kpc1|kpc3|repare",
+    method="coarse|kpc1|kpc3|avg|repare",
 
 
 include: "rules/common.smk"

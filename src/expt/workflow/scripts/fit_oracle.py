@@ -1,4 +1,4 @@
-"""Fit COARSEOracle (plain, or kPC when `k` is set) under the true partition."""
+"""Fit COARSEOracle (plain, kPC when `k` is set, or avg) under the true partition."""
 
 import pickle
 
@@ -19,6 +19,7 @@ num_nodes = int(snakemake.wildcards.num_nodes)
 
 k_param = getattr(snakemake.params, "k", None)
 k = int(k_param) if k_param is not None else None
+avg = bool(getattr(snakemake.params, "avg", False))
 
 data = np.load(snakemake.input.data, allow_pickle=True)
 data_dict = build_data_dict(data, data["targets"], intervention_type)
@@ -29,7 +30,7 @@ _, M_true, env_order, partition = build_oracle_partition(
 model = COARSEOracle()
 model.fit(
     partition, M_true, env_order, data_dict,
-    lambda_pen=lambda_pen, k=k,
+    lambda_pen=lambda_pen, k=k, avg=avg,
 )
 
 with open(snakemake.output[0], "wb") as f:

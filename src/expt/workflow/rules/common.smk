@@ -62,9 +62,10 @@ ORACLE_LABELS = {
     "coarse": "COARSE-oracle",
     "kpc1": "kPC-k1-oracle",
     "kpc3": "kPC-k3-oracle",
+    "avg": "avg-oracle",
     "repare": "RePaRe-oracle",
 }
-ORACLE_K = {"coarse": None, "kpc1": 1, "kpc3": 3}
+ORACLE_K = {"coarse": None, "kpc1": 1, "kpc3": 3, "avg": None}
 NOISES = ["gaussian", "uniform", "laplace", "t3", "t4"]
 
 # `--config smoke=1`: small grids and 2 seeds; collected outputs go under results/smoke/.

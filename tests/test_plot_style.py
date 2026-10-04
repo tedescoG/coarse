@@ -62,9 +62,9 @@ def test_place_legend_puts_a_single_panel_legend_inside_the_axes():
 
 
 def test_display_methods_maps_and_rejects_unknown():
-    df = pd.DataFrame({"method": ["COARSE", "COARSE-oracle", "kPC-k1-oracle", "RePaRe-oracle"]})
+    df = pd.DataFrame({"method": ["COARSE", "COARSE-oracle", "kPC-k1-oracle", "avg-oracle", "RePaRe-oracle"]})
     out = ps.display_methods(df)
-    assert out["method"].tolist() == ["COARSE", "COARSE", "COARSE-1PC", "RePaRe"]
+    assert out["method"].tolist() == ["COARSE", "COARSE", "COARSE-1PC", "COARSE-avg", "RePaRe"]
     with pytest.raises(ValueError):
         ps.display_methods(pd.DataFrame({"method": ["mystery"]}))
 

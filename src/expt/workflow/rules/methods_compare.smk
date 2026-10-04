@@ -1,5 +1,5 @@
 # Methods under the true partition (edge recovery only).
-MC_METHODS = ["coarse", "repare"]
+MC_METHODS = ["coarse", "avg", "repare"]
 MC_NODES = [10, 20] if SMOKE else [10, 20, 50, 100, 200, 300, 500]
 MC_METRICS = ["fscore", "runtime_sec"]
 MC_DIR = RESULTS + "methods_compare/"

@@ -1,4 +1,4 @@
-# Fits under the true partition: COARSEOracle (plain / kPC) and RePaRe.
+# Fits under the true partition: COARSEOracle (plain / kPC / avg) and RePaRe.
 
 
 rule fit_oracle:
@@ -7,13 +7,14 @@ rule fit_oracle:
     output:
         temp(ORACLE + "model.pkl"),
     wildcard_constraints:
-        method="coarse|kpc1|kpc3",
+        method="coarse|kpc1|kpc3|avg",
     resources:
         mem_mb=cell_mem_mb,
     params:
         lambda_pen=lambda w: float(w.lambda_pen),
         intervention_type=INTERVENTION_TYPE,
         k=lambda w: ORACLE_K[w.method],
+        avg=lambda w: w.method == "avg",
     script:
         "../scripts/fit_oracle.py"
 
@@ -41,7 +42,7 @@ rule evaluate_oracle:
     output:
         ORACLE + "metrics.csv",
     wildcard_constraints:
-        method="coarse|kpc1|kpc3|repare",
+        method="coarse|kpc1|kpc3|avg|repare",
     resources:
         mem_mb=cell_mem_mb,
     params:

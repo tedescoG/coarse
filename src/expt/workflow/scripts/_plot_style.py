@@ -26,13 +26,15 @@ METHOD_DISPLAY = {
     "COARSE-oracle": "COARSE",
     "kPC-k1-oracle": "COARSE-1PC",
     "kPC-k3-oracle": "COARSE-3PC",
+    "avg-oracle": "COARSE-avg",
     "RePaRe-oracle": "RePaRe",
 }
-METHOD_ORDER = ["COARSE", "COARSE-1PC", "COARSE-3PC", "RePaRe"]
+METHOD_ORDER = ["COARSE", "COARSE-1PC", "COARSE-3PC", "COARSE-avg", "RePaRe"]
 METHOD_COLOR = {
-    "COARSE": "#0072B2", "COARSE-1PC": "#009E73", "COARSE-3PC": "#CC79A7", "RePaRe": "#E69F00"
+    "COARSE": "#0072B2", "COARSE-1PC": "#009E73", "COARSE-3PC": "#CC79A7", "COARSE-avg": "#D55E00",
+    "RePaRe": "#E69F00",
 }
-METHOD_MARKER = dict(zip(METHOD_ORDER, ["o", "s", "^", "v"]))
+METHOD_MARKER = dict(zip(METHOD_ORDER, ["o", "s", "^", "D", "v"]))
 
 COLUMN_LABEL = {
     "samp_size": "sample size (n)",
