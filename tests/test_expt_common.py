@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import networkx as nx
+import numpy as np
+import pytest
 
-from _common import partition_edge_metrics, partition_labels, prf
+from _common import correct, partition_edge_metrics, partition_labels, prf, welch_pvalues
+from coarse.hypothesis_tests import compute_M
+from conftest import sample_chain_dataset
 
 
 def test_partition_labels_indexes_blocks_in_iteration_order():
@@ -30,3 +34,24 @@ def test_partition_edge_metrics_scores_forward_pairs_in_node_order():
 def test_prf_empty_conventions():
     assert prf(0, 0, 0) == (1.0, 1.0, 1.0)
     assert prf(0, 2, 0) == (0.0, 1.0, 0.0)
+
+
+def test_correct_matches_hand_computed_rejections():
+    """N = 4, q = 0.05: Bonferroni cutoff 0.0125; BH thresholds k·0.0125; BY divides q by H_4."""
+    P = np.array([[0.001, 0.02], [0.03, 0.5]])
+    assert correct(P, "bonferroni", 0.05).tolist() == [[True, False], [False, False]]
+    assert correct(P, "bh", 0.05).tolist() == [[True, True], [True, False]]
+    assert correct(P, "by", 0.05).tolist() == [[True, False], [False, False]]
+    # Step-up: the largest passing rank rejects every smaller p-value.
+    assert correct(np.array([[0.04, 0.045]]), "bh", 0.05).all()
+    with pytest.raises(ValueError):
+        correct(P, "holm", 0.05)
+
+
+def test_welch_pvalues_threshold_equals_compute_M():
+    rng = np.random.default_rng(0)
+    data = {"obs": sample_chain_dataset(300, rng),
+            "1": sample_chain_dataset(300, rng, (0,)),
+            "0": sample_chain_dataset(300, rng, (3,))}
+    M, _ = compute_M(data, alpha=1e-3)
+    assert np.array_equal(welch_pvalues(data) < 1e-3, M)

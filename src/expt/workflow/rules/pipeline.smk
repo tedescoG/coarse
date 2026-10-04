@@ -46,3 +46,20 @@ rule evaluate:
         lambda_pen=LAMBDA_PEN,
     script:
         "../scripts/evaluate.py"
+
+
+rule threshold_cell:
+    input:
+        data=DATA + "dataset.npz",
+    output:
+        THRESHOLD + "metrics.csv",
+    resources:
+        mem_mb=cell_mem_mb,
+    params:
+        alphas=TC_ALPHAS,
+        q=TC_Q,
+        lambda_pen=LAMBDA_PEN,
+        refine_test=REFINE_TEST,
+        intervention_type=INTERVENTION_TYPE,
+    script:
+        "../scripts/threshold.py"

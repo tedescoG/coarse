@@ -38,6 +38,7 @@ COLUMN_LABEL = {
     "samp_size": "sample size (n)",
     "num_nodes": "nodes",
     "lambda_pen": "penalty multiplier λ",
+    "cutoff": "per-test cutoff α",
     "density": "density",
     "noise": "noise",
     "method": "method",

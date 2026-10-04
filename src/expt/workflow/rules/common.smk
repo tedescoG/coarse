@@ -2,6 +2,7 @@
 #   DATA      results/_data/noise=…/tpi=…/<cell>/dataset.npz
 #   PIPELINE  results/_run/pipeline/method=…/noise=…/tpi=…/<cell>/{model.pkl,metrics.csv}
 #   ORACLE    results/_run/oracle/method=…/noise=…/lambda_pen=…/<cell>/{model.pkl,metrics.csv}
+#   THRESHOLD results/_run/threshold/noise=…/tpi=…/<cell>/metrics.csv
 from itertools import product
 
 CELL = (
@@ -16,6 +17,7 @@ PIPELINE = (
 ORACLE = (
     "results/_run/oracle/method={method}/noise={noise}/lambda_pen={lambda_pen}/" + CELL
 )
+THRESHOLD = "results/_run/threshold/noise={noise}/tpi={targets_per_interv}/" + CELL
 # Oracle fits use single-target data; noise.smk sweeps the noise wildcard.
 ORACLE_DATA = DATA.replace("{targets_per_interv}", "1")
 DEFAULT = dict(noise=["gaussian"], targets_per_interv=["1"])
@@ -40,6 +42,10 @@ ALPHA = 1e-4
 LAMBDA_PEN = 1.0
 REFINE_TEST = "welch"
 INTERVENTION_TYPE = "soft"
+# threshold_correction: uncorrected α curve (10^-8 … 10^-1 in quarter decades, plus 0.2) and
+# the level of Bonferroni / BH / BY.
+TC_ALPHAS = [10 ** (k / 4) for k in range(-32, -3)] + [0.2]
+TC_Q = 0.05
 # Imported by every plot script; an explicit input since Snakemake hashes only `script:`.
 PLOT_STYLE = "workflow/scripts/_plot_style.py"
 
@@ -63,9 +69,7 @@ DENS_SAMP = (
     if SMOKE
     else [100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000]
 )
-SAMP_SIZES = (
-    [1000, 2000] if SMOKE else [1000, 2000, 5000, 10000, 20000, 50000, 100000]
-)
+SAMP_SIZES = [1000, 2000] if SMOKE else [1000, 2000, 5000, 10000, 20000, 50000, 100000]
 SCAL_NODES = [10, 20] if SMOKE else [10, 20, 50, 100, 200, 500, 1000]
 SCAL_SAMP = [1000, 5000] if SMOKE else [1000, 5000, 10000, 50000, 100000]
 NOISE_NODES = [10, 20] if SMOKE else [50, 100, 200, 500]

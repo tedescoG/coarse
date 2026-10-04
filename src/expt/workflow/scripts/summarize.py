@@ -10,7 +10,7 @@ def q75(s):
 
 
 df = pd.read_csv(snakemake.input[0])
-out = df.groupby(list(snakemake.params.by))[list(snakemake.params.metrics)].agg(
+out = df.groupby(list(snakemake.params.by), dropna=False)[list(snakemake.params.metrics)].agg(
     ["mean", "std", "median", q25, q75, "count"]
 )
 out.columns = [f"{metric}_{stat}" for metric, stat in out.columns]

@@ -57,6 +57,34 @@ def build_oracle_partition(weights: np.ndarray, targets, num_nodes: int):
     return true_dag, M_true, env_order, partition
 
 
+def welch_pvalues(data_dict: dict) -> np.ndarray:
+    """(p, m) Welch p-values of every non-baseline env against "obs", in `compute_M` column
+    order."""
+    from coarse.hypothesis_tests import _normalize_env_data, _vectorized_welch
+
+    X0 = _normalize_env_data(data_dict["obs"])
+    envs = sorted((k for k in data_dict if k != "obs"), key=str)
+    return np.column_stack([_vectorized_welch(X0, _normalize_env_data(data_dict[e])) for e in envs])
+
+
+def correct(P: np.ndarray, rule: str, q: float) -> np.ndarray:
+    """Rejections of `rule` ("bonferroni", "bh", "by") at level `q`, with all entries of `P`
+    as one family."""
+    p = P.ravel()
+    N = p.size
+    if rule == "bonferroni":
+        return P < q / N
+    if rule not in ("bh", "by"):
+        raise ValueError(f"unknown correction {rule!r}")
+    level = q / np.sum(1.0 / np.arange(1, N + 1)) if rule == "by" else q
+    order = np.argsort(p)
+    passed = np.flatnonzero(p[order] <= level * np.arange(1, N + 1) / N)
+    R = np.zeros(N, dtype=bool)
+    if passed.size:
+        R[order[: passed[-1] + 1]] = True
+    return R.reshape(P.shape)
+
+
 def partition_labels(blocks, num_nodes: int) -> np.ndarray:
     """Block index of every node, in `blocks` iteration order (for ARI)."""
     labels = np.zeros(num_nodes, dtype=int)
