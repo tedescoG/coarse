@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from scipy import linalg as sla
 
+import coarse.coarse as coarse_mod
 import coarse.growshrink as growshrink_mod
 from coarse.coarse import COARSE, COARSEOracle
 from coarse.growshrink import grow_shrink
@@ -528,7 +529,7 @@ def test_fit_rejects_bad_input(corrupt):
     else:
         data_dict["1"] = data_dict["1"][:1]
     with pytest.raises(ValueError, match="NaN" if corrupt == "nan" else "2 rows"):
-        COARSE().fit(data_dict)
+        COARSE().fit(data_dict, check_input=True)
 
 
 @pytest.mark.parametrize("corrupt", ["constant", "duplicate"])
@@ -545,7 +546,7 @@ def test_fit_rejects_constant_and_duplicate_columns(corrupt):
         data_dict["1"][:, 4] = data_dict["1"][:, 0]
         match = "identical"
     with pytest.raises(ValueError, match=match):
-        COARSE().fit(data_dict)
+        COARSE().fit(data_dict, check_input=True)
 
 
 @pytest.mark.parametrize("dependent", ["target_block", "parents"])
@@ -558,7 +559,7 @@ def test_fit_rejects_linearly_dependent_columns(dependent):
         else:
             v[:, 2] = 2.0 * v[:, 3] + 3.0
     with pytest.raises(ValueError, match="linearly dependent"):
-        COARSE().fit(data_dict)
+        COARSE().fit(data_dict, check_input=True)
 
 
 def test_fit_accepts_noisy_linear_combination():
@@ -567,9 +568,26 @@ def test_fit_accepts_noisy_linear_combination():
     data_dict = _chain_data_dict(300, 0)
     for v in data_dict.values():
         v[:, 1] = 2.0 * v[:, 0] + 3.0 + 1e-6 * noise_rng.standard_normal(v.shape[0])
-    model = COARSE().fit(data_dict)
+    model = COARSE().fit(data_dict, check_input=True)
     assert np.isfinite(model.score)
 
+
+@pytest.mark.parametrize("cls", ["COARSE", "COARSEOracle"])
+def test_check_input_gates_data_validation(cls, monkeypatch):
+    """Data validation runs only with `check_input=True`."""
+    calls = []
+    monkeypatch.setattr(coarse_mod, "_check_data_dict", lambda d: calls.append(d))
+    data_dict = _chain_data_dict(300, 0)
+    if cls == "COARSE":
+        fit = lambda **kw: COARSE().fit(data_dict, **kw)
+    else:
+        fit = lambda **kw: COARSEOracle().fit(
+            list(_CHAIN_PARTITION), _CHAIN_M, _CHAIN_ENV_ORDER, data_dict, **kw
+        )
+    fit()
+    assert calls == []
+    fit(check_input=True)
+    assert len(calls) == 1
 
 @pytest.mark.parametrize("k", [0, -1, 1.5, True])
 def test_fit_rejects_bad_k(k):

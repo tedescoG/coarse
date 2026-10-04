@@ -164,7 +164,7 @@ def _run_score_phase(
         ek: v - v.mean(axis=0, keepdims=True) for ek, v in env_arrays.items()
     }
     if k is not None:
-        # obs_std > 0: constant columns are rejected upstream.
+        # obs_std > 0 assumed: constant columns are rejected by `check_input`.
         obs_std = centered_env_arrays[baseline_key].std(axis=0, keepdims=True)
         centered_env_arrays = {
             ek: v / obs_std for ek, v in centered_env_arrays.items()
@@ -226,7 +226,8 @@ class COARSE:
     `fit` sets: `partition` (Π_E), `M`, `env_order` (columns of M), `supports`,
     `candidate_pools`, `linear_extension_` (τ), `parent_sets`, `dag` (nodes are
     `tuple(sorted(block))`), `score` (total BIC), `num_features`, `fit_metadata`,
-    `fit_runtime_sec` (excludes input validation) and `check_runtime_sec` (input validation).
+    `fit_runtime_sec` (excludes input validation) and `check_runtime_sec` (input validation,
+    run only with `check_input=True`).
     """
 
     def __init__(self, rng: np.random.Generator | None = None) -> None:
@@ -240,9 +241,11 @@ class COARSE:
         refine_test: str = "welch",
         baseline_key: EnvKey = "obs",
         k: int | None = None,
+        check_input: bool = False,
     ) -> "COARSE":
         check_start = time.perf_counter()
-        _check_data_dict(data_dict)
+        if check_input:
+            _check_data_dict(data_dict)
         start = time.perf_counter()
 
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
@@ -326,9 +329,11 @@ class COARSEOracle:
         lambda_pen: float = 1.0,
         baseline_key: EnvKey = "obs",
         k: int | None = None,
+        check_input: bool = False,
     ) -> "COARSEOracle":
         check_start = time.perf_counter()
-        _check_data_dict(data_dict)
+        if check_input:
+            _check_data_dict(data_dict)
         start = time.perf_counter()
         env_arrays, baseline_key = _normalize_data_dict(data_dict, baseline_key)
         M = np.asarray(M, dtype=bool)

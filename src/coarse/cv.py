@@ -96,6 +96,7 @@ def _evaluate_fold(
     refine_test: str,
     baseline_key: EnvKey,
     rng: np.random.Generator,
+    check_input: bool = False,
 ) -> tuple[float, float]:
     """(held-out log-likelihood, input-check seconds) of COARSE fit on `train_dict` at
     `alpha`; the log-likelihood is -inf if any block fails."""
@@ -105,6 +106,7 @@ def _evaluate_fold(
         lambda_pen=lambda_pen,
         refine_test=refine_test,
         baseline_key=baseline_key,
+        check_input=check_input,
     )
 
     # Both folds centered with the train means.
@@ -161,8 +163,10 @@ class COARSECV:
         lambda_pen: float = 1.0,
         refine_test: str = "welch",
         baseline_key: EnvKey = "obs",
+        check_input: bool = False,
     ) -> "COARSECV":
-        _check_data_dict(data_dict)
+        if check_input:
+            _check_data_dict(data_dict)
         # Input checks are not timed: fold and refit check time is subtracted below.
         cv_start = time.perf_counter()
 
@@ -195,6 +199,7 @@ class COARSECV:
                     refine_test,
                     baseline_key,
                     inner_rngs[i, k],
+                    check_input,
                 )
                 check_sec += fold_check_sec
 
@@ -222,6 +227,7 @@ class COARSECV:
             lambda_pen=lambda_pen,
             refine_test=refine_test,
             baseline_key=baseline_key,
+            check_input=check_input,
         )
 
         self.alpha_grid = alpha_grid

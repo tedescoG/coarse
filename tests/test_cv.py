@@ -9,6 +9,8 @@ from scipy.stats import multivariate_normal
 
 from conftest import sample_chain_dataset
 
+import coarse.coarse as coarse_mod
+import coarse.cv as cv_mod
 from coarse.coarse import COARSE
 from coarse.cv import (
     COARSECV,
@@ -108,6 +110,24 @@ def test_cv_fit_validates_arguments():
     with pytest.raises(ValueError, match="n_folds"):
         COARSECV().fit(data_dict, alpha_grid=(1e-3,), n_folds=1)
 
+
+def test_cv_check_input_gates_data_validation(monkeypatch):
+    """`check_input=True` rejects NaN and validates the input, every fold fit and the refit;
+    the default validates nothing."""
+    data_dict = _chain_data_dict(300, 0)
+    bad = {k: v.copy() for k, v in data_dict.items()}
+    bad["obs"][3, 2] = np.nan
+    with pytest.raises(ValueError, match="NaN"):
+        COARSECV().fit(bad, alpha_grid=(1e-3,), n_folds=2, check_input=True)
+
+    calls = []
+    record = lambda d: calls.append(d)
+    monkeypatch.setattr(cv_mod, "_check_data_dict", record)
+    monkeypatch.setattr(coarse_mod, "_check_data_dict", record)
+    COARSECV().fit(data_dict, alpha_grid=(1e-3, 1e-2), n_folds=2)
+    assert calls == []
+    COARSECV().fit(data_dict, alpha_grid=(1e-3, 1e-2), n_folds=2, check_input=True)
+    assert len(calls) == 1 + 2 * 2 + 1
 
 def test_cv_all_folds_fail_raises():
     rng = np.random.default_rng(0)
