@@ -37,6 +37,7 @@ METHOD_MARKER = dict(zip(METHOD_ORDER, ["o", "s", "^", "v"]))
 COLUMN_LABEL = {
     "samp_size": "sample size (n)",
     "num_nodes": "nodes",
+    "lambda_pen": "penalty multiplier λ",
     "density": "density",
     "noise": "noise",
     "method": "method",
@@ -48,6 +49,7 @@ COLUMN_LABEL = {
 }
 UNIT_RANGE = {"ari", "fscore", "precision", "recall"}  # y in [0, 1]
 LOG_Y = {"runtime_sec"}
+GRID_TICKS = {"num_nodes", "lambda_pen"}  # log x ticked at the grid values
 
 def label(column: str) -> str:
     return COLUMN_LABEL.get(column, column)
@@ -84,12 +86,12 @@ def method_order(levels) -> list:
 
 
 def format_axis(axis, column: str, values=None) -> None:
-    """Log-axis ticks: `num_nodes` at the grid values, anything else at decades only."""
-    if column == "num_nodes":
+    """Log-axis ticks: `GRID_TICKS` columns at the grid values, anything else at decades only."""
+    if column in GRID_TICKS:
         if values is None:
-            raise ValueError("num_nodes axis needs the grid values")
+            raise ValueError(f"{column} axis needs the grid values")
         axis.set_major_locator(FixedLocator(sorted(values)))
-        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{int(round(v))}"))
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
         axis.set_minor_locator(NullLocator())
         axis.set_minor_formatter(NullFormatter())
         return
@@ -116,8 +118,8 @@ LINE_KWARGS = dict(dashes=True, estimator="median", errorbar="ci", linewidth=2.0
 
 def style_axes(ax, x, y, *, values=None, xlabel=True, ylabel=True) -> None:
     """Scales, ticks, [0, 1] limits and labels of one panel. `values` is the x grid (needed
-    for num_nodes)."""
-    if x in ("samp_size", "num_nodes"):
+    for `GRID_TICKS`)."""
+    if x == "samp_size" or x in GRID_TICKS:
         ax.set_xscale("log")
         format_axis(ax.xaxis, x, values=values)
     if y in LOG_Y:
@@ -143,8 +145,8 @@ def finish(fig, path) -> None:
     plt.close(fig)
 
 
-def line_panel(sub, *, x, y, hue, out_path, hue_order=None) -> None:
-    """One styled line panel saved to `out_path`."""
+def line_panel(sub, *, x, y, hue, out_path, hue_order=None, vline=None) -> None:
+    """One styled line panel saved to `out_path`; `vline` draws a dashed reference at that x."""
     levels = sub[hue].unique()
     if hue_order is not None:
         order = list(hue_order)
@@ -165,6 +167,8 @@ def line_panel(sub, *, x, y, hue, out_path, hue_order=None) -> None:
         palette=hue_palette(hue, order), markers=hue_markers(hue, order),
         ax=ax, **LINE_KWARGS,
     )
+    if vline is not None:
+        ax.axvline(vline, ls="--", color="0.5", lw=1.2, zorder=0)
     style_axes(ax, x, y, values=sorted(sub[x].unique()))
     place_legend(ax, label(hue))
     finish(fig, out_path)

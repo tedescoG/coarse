@@ -4,6 +4,7 @@
     filter     optional {column: value}
     hue_order  optional level order
     col        optional facet column
+    vline      optional x of a dashed reference line (single panel only)
 """
 
 import pandas as pd
@@ -46,7 +47,10 @@ for panel in snakemake.params.panels:
     levels = list(sub[hue].cat.categories)
     out_path = snakemake.output[panel["out"]]
     if panel.get("col") is None:
-        ps.line_panel(sub, x=panel["x"], y=panel["y"], hue=hue, out_path=out_path, hue_order=levels)
+        ps.line_panel(
+            sub, x=panel["x"], y=panel["y"], hue=hue, out_path=out_path,
+            hue_order=levels, vline=panel.get("vline"),
+        )
         continue
     g = sns.relplot(
         data=sub,

@@ -75,6 +75,15 @@ def test_num_nodes_axis_labels_grid_values():
     plt.close(fig)
 
 
+def test_lambda_pen_axis_labels_grid_values():
+    fig, ax = plt.subplots()
+    ax.plot([0.25, 1.0, 4.0], [1, 2, 3])
+    ax.set_xscale("log")
+    ps.format_axis(ax.xaxis, "lambda_pen", values=[0.25, 0.5, 1.0, 2.0, 4.0])
+    assert _visible_labels(ax.xaxis) == ["0.25", "0.5", "1", "2", "4"]
+    plt.close(fig)
+
+
 def test_line_panel_writes_a_file_and_rejects_hues_outside_the_order(tmp_path):
     """A non-empty PDF is written, and a hue_order missing a present level raises."""
     df = ps.display_methods(
@@ -88,7 +97,7 @@ def test_line_panel_writes_a_file_and_rejects_hues_outside_the_order(tmp_path):
         )
     )
     out = tmp_path / "p.pdf"
-    ps.line_panel(df, x="samp_size", y="fscore", hue="method", out_path=out)
+    ps.line_panel(df, x="samp_size", y="fscore", hue="method", out_path=out, vline=700)
     assert out.exists() and out.stat().st_size > 0
     with pytest.raises(ValueError):
         ps.line_panel(

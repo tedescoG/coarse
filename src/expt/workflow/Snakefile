@@ -18,16 +18,18 @@ include: "rules/densities.smk"
 include: "rules/scalability.smk"
 include: "rules/noise.smk"
 include: "rules/methods_compare.smk"
+include: "rules/lambda_sens.smk"
 include: "rules/causalchamber.smk"
 
 
-# Targets: densities_all, scalability_all, noise_all, methods_compare_all, causalchamber,
-# coarse_all, all. Put targets before `--config`.
+# Targets: densities_all, scalability_all, noise_all, methods_compare_all, lambda_sens_all,
+# causalchamber, coarse_all, all. Put targets before `--config`.
 rule coarse_all:
     input:
         rules.densities_all.input,
         rules.scalability_all.input,
         rules.noise_all.input,
+        rules.lambda_sens_all.input,
 
 
 rule all:
@@ -37,4 +39,5 @@ rule all:
         rules.scalability_all.input,
         rules.noise_all.input,
         rules.methods_compare_all.input,
+        rules.lambda_sens_all.input,
         rules.causalchamber.input,
