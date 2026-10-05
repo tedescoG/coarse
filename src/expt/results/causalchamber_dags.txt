@@ -1,5 +1,5 @@
 === COARSE_grouped (score-selected) ===
-  alpha=1e-02, lambda=1e+00, ari=0.9317, partition precision/recall/f1=1.0000/0.5000/0.6667, runtime_sec=0.019, search_runtime_sec=0.933, num_parts=4, num_edges=2
+  alpha=1e-02, lambda=1e+00, ari=0.9317, partition precision/recall/f1=1.0000/0.5000/0.6667, runtime_sec=0.002, search_runtime_sec=0.122, num_parts=4, num_edges=2
   Partition nodes:
     Node 0: ('l_11', 'l_12', 'l_21', 'l_22', 'l_31', 'l_32')
     Node 1: ('red', 'green', 'blue', 'current', 'ir_1', 'ir_2', 'vis_1', 'vis_2')
@@ -10,7 +10,7 @@
     2 -> 3
 
 === COARSE_grouped (oracle-selected) ===
-  alpha=1e-04, lambda=1e+00, ari=1.0000, partition precision/recall/f1=1.0000/0.5000/0.6667, runtime_sec=0.046, search_runtime_sec=0.121, num_parts=4, num_edges=2
+  alpha=1e-04, lambda=1e+00, ari=1.0000, partition precision/recall/f1=1.0000/0.5000/0.6667, runtime_sec=0.005, search_runtime_sec=0.012, num_parts=4, num_edges=2
   Partition nodes:
     Node 0: ('l_11', 'l_12', 'l_21', 'l_22', 'l_31', 'l_32')
     Node 1: ('red', 'green', 'blue', 'current', 'ir_1', 'ir_2', 'vis_1', 'vis_2')
@@ -21,7 +21,7 @@
     2 -> 3
 
 === COARSE_ungrouped (score-selected) ===
-  alpha=1e-04, lambda=1e+00, ari=1.0000, partition precision/recall/f1=1.0000/0.8000/0.8889, runtime_sec=0.030, search_runtime_sec=1.226, num_parts=8, num_edges=8
+  alpha=1e-04, lambda=1e+00, ari=1.0000, partition precision/recall/f1=1.0000/0.8000/0.8889, runtime_sec=0.016, search_runtime_sec=0.403, num_parts=8, num_edges=8
   Partition nodes:
     Node 0: ('l_11', 'l_12', 'l_21', 'l_22', 'l_31', 'l_32')
     Node 1: ('red',)
@@ -42,7 +42,7 @@
     5 -> 7
 
 === COARSE_ungrouped (oracle-selected) ===
-  alpha=1e-04, lambda=1e+00, ari=1.0000, partition precision/recall/f1=1.0000/0.8000/0.8889, runtime_sec=0.044, search_runtime_sec=0.147, num_parts=8, num_edges=8
+  alpha=1e-04, lambda=1e+00, ari=1.0000, partition precision/recall/f1=1.0000/0.8000/0.8889, runtime_sec=0.008, search_runtime_sec=0.032, num_parts=8, num_edges=8
   Partition nodes:
     Node 0: ('l_11', 'l_12', 'l_21', 'l_22', 'l_31', 'l_32')
     Node 1: ('red',)
@@ -63,7 +63,7 @@
     5 -> 7
 
 === RePaRe_grouped (score-selected) ===
-  alpha=1e-03, beta=1e-04, ari=0.9317, partition precision/recall/f1=1.0000/0.5000/0.6667, runtime_sec=0.036, search_runtime_sec=0.551, num_parts=4, num_edges=2
+  alpha=1e-03, beta=1e-04, ari=0.9317, partition precision/recall/f1=1.0000/0.5000/0.6667, runtime_sec=0.017, search_runtime_sec=0.274, num_parts=4, num_edges=2
   Partition nodes:
     Node 0: ('l_11', 'l_12', 'l_21', 'l_22', 'l_31', 'l_32')
     Node 1: ('red', 'green', 'blue', 'current', 'ir_1', 'ir_2', 'vis_1', 'vis_2')
@@ -74,7 +74,7 @@
     2 -> 3
 
 === RePaRe_grouped (oracle-selected) ===
-  alpha=1e-04, beta=1e-04, ari=1.0000, partition precision/recall/f1=1.0000/0.5000/0.6667, runtime_sec=0.040, search_runtime_sec=0.551, num_parts=4, num_edges=2
+  alpha=1e-04, beta=1e-04, ari=1.0000, partition precision/recall/f1=1.0000/0.5000/0.6667, runtime_sec=0.018, search_runtime_sec=0.274, num_parts=4, num_edges=2
   Partition nodes:
     Node 0: ('l_11', 'l_12', 'l_21', 'l_22', 'l_31', 'l_32')
     Node 1: ('red', 'green', 'blue', 'current', 'ir_1', 'ir_2', 'vis_1', 'vis_2')
@@ -85,7 +85,7 @@
     2 -> 3
 
 === RePaRe_ungrouped (score-selected) ===
-  alpha=1e-04, beta=1e-02, ari=1.0000, partition precision/recall/f1=1.0000/0.8000/0.8889, runtime_sec=0.177, search_runtime_sec=2.840, num_parts=8, num_edges=8
+  alpha=1e-04, beta=1e-02, ari=1.0000, partition precision/recall/f1=1.0000/0.8000/0.8889, runtime_sec=0.098, search_runtime_sec=1.536, num_parts=8, num_edges=8
   Partition nodes:
     Node 0: ('l_11', 'l_12', 'l_21', 'l_22', 'l_31', 'l_32')
     Node 1: ('red',)
@@ -106,7 +106,7 @@
     6 -> 7
 
 === RePaRe_ungrouped (oracle-selected) ===
-  alpha=1e-04, beta=1e-02, ari=1.0000, partition precision/recall/f1=1.0000/0.8000/0.8889, runtime_sec=0.177, search_runtime_sec=2.840, num_parts=8, num_edges=8
+  alpha=1e-04, beta=1e-02, ari=1.0000, partition precision/recall/f1=1.0000/0.8000/0.8889, runtime_sec=0.098, search_runtime_sec=1.536, num_parts=8, num_edges=8
   Partition nodes:
     Node 0: ('l_11', 'l_12', 'l_21', 'l_22', 'l_31', 'l_32')
     Node 1: ('red',)
@@ -127,7 +127,7 @@
     6 -> 7
 
 === GIES (score-selected) ===
-  no hyperparameters, ari=nan, edges precision/recall/f1=0.6316/0.6154/0.6234, runtime_sec=2.403, search_runtime_sec=2.403, num_parts=20, num_edges=38
+  no hyperparameters, ari=nan, edges precision/recall/f1=0.6316/0.6154/0.6234, runtime_sec=1.832, search_runtime_sec=1.832, num_parts=20, num_edges=38
   Partition nodes:
     Node 0: ('red',)
     Node 1: ('green',)
@@ -190,7 +190,7 @@
     13 -> 9
 
 === GnIES (score-selected) ===
-  no hyperparameters, ari=nan, skeleton precision/recall/f1=0.4074/0.5641/0.4731, runtime_sec=565.164, search_runtime_sec=565.164, num_parts=20, num_edges=55
+  no hyperparameters, ari=nan, skeleton precision/recall/f1=0.4074/0.5641/0.4731, runtime_sec=376.146, search_runtime_sec=376.146, num_parts=20, num_edges=55
   Partition nodes:
     Node 0: ('red',)
     Node 1: ('green',)
@@ -270,7 +270,7 @@
     13 -> 11
 
 === UT-IGSP (score-selected) ===
-  alpha_ci=1e-02, alpha_inv=1e-03, ari=nan, edges precision/recall/f1=0.3818/0.5385/0.4468, runtime_sec=0.289, search_runtime_sec=4.522, num_parts=20, num_edges=55
+  alpha_ci=1e-02, alpha_inv=1e-03, ari=nan, edges precision/recall/f1=0.3818/0.5385/0.4468, runtime_sec=0.188, search_runtime_sec=2.692, num_parts=20, num_edges=55
   Partition nodes:
     Node 0: ('red',)
     Node 1: ('green',)
@@ -350,7 +350,7 @@
     15 -> 1
 
 === UT-IGSP (oracle-selected) ===
-  alpha_ci=1e-04, alpha_inv=1e-04, ari=nan, edges precision/recall/f1=0.5349/0.5897/0.5610, runtime_sec=0.323, search_runtime_sec=4.522, num_parts=20, num_edges=43
+  alpha_ci=1e-04, alpha_inv=1e-04, ari=nan, edges precision/recall/f1=0.5349/0.5897/0.5610, runtime_sec=0.128, search_runtime_sec=2.692, num_parts=20, num_edges=43
   Partition nodes:
     Node 0: ('red',)
     Node 1: ('green',)
