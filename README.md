@@ -1,4 +1,4 @@
-# Learning Causal Abstractions by Scoring Coarse Parents
+# Score-Based Learning of Cluster DAGs from Interventions
 
 **COARSE** (**C**ausal **O**rdering via **A**bstraction and **R**ecovery from **S**oft
 int**E**rventions) learns a partition of the variables and a DAG over its blocks from
@@ -78,16 +78,3 @@ Run from `src/expt/`. Outputs go to `src/expt/results/`.
 
 GPL-3.0-or-later (see `COPYING`).
 
-## Citing
-
-```bibtex
-@misc{alma99128284276405763,
-author = {Tedesco, Gaetano},
-copyright = {Unrestricted online access},
-keywords = {Causal Abstraction ; Coarsening ; Heterogeneous Data},
-language = {eng},
-publisher = {Department of Mathematical Sciences, Faculty of Science, University of Copenhagen},
-title = {Learning Causal Abstractions by Scoring Coarse Parents},
-year = {2026},
-}
-```
