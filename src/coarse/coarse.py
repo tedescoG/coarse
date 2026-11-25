@@ -41,7 +41,9 @@ def _project_blocks(
         if k is None:
             V_j = np.full((len(orig_idx), 1), 1.0 / len(orig_idx))
         else:
-            _, _, Vt = np.linalg.svd(env_arrays[baseline_key][:, orig_idx], full_matrices=False)
+            _, _, Vt = np.linalg.svd(
+                env_arrays[baseline_key][:, orig_idx], full_matrices=False
+            )
             # The SVD has only min(n_ref, r_j) vectors.
             V_j = Vt[: min(k, Vt.shape[0]), :].T  # (r_j, k_j)
         k_j = V_j.shape[1]
@@ -99,9 +101,7 @@ def _check_columns_non_degenerate(key: EnvKey, arr: np.ndarray) -> None:
     """Reject constant, identical or (when n > p) linearly dependent columns."""
     constant = np.flatnonzero(np.ptp(arr, axis=0) == 0.0)
     if constant.size:
-        raise ValueError(
-            f"env {key!r}: column(s) {constant.tolist()} are constant"
-        )
+        raise ValueError(f"env {key!r}: column(s) {constant.tolist()} are constant")
     p = arr.shape[1]
     if p < 2:
         return
@@ -169,22 +169,31 @@ def _run_score_phase(
     if reduce:
         # obs_std > 0 assumed: constant columns are rejected by `check_input`.
         obs_std = centered_env_arrays[baseline_key].std(axis=0, keepdims=True)
-        centered_env_arrays = {
-            ek: v / obs_std for ek, v in centered_env_arrays.items()
-        }
+        centered_env_arrays = {ek: v / obs_std for ek, v in centered_env_arrays.items()}
 
     supports = compute_supports(M, partition)
     candidate_pools = compute_candidate_pools(supports)
     tau = list(partition)
+    # Blocks may only inherit from τ-predecessors. For canonical partitions this is a
+    # no-op: distinct row classes have distinct supports, so every strictly-smaller
+    # candidate is τ-earlier already. For finer partitions it gives same-signature
+    # siblings a consistent direction, keeping the block DAG acyclic.
+    position = {block: i for i, block in enumerate(tau)}
+    candidate_pools = {
+        block: [c for c in pool if position[c] < position[block]]
+        for block, pool in candidate_pools.items()
+    }
 
     if reduce:
         score_data, score_partition, block_map = _project_blocks(
-            partition, centered_env_arrays, k, baseline_key,
+            partition,
+            centered_env_arrays,
+            k,
+            baseline_key,
         )
         rev_map = {v: orig for orig, v in block_map.items()}
         score_pools: dict[Block, list[Block]] = {
-            block_map[b]: [block_map[c] for c in candidate_pools[b]]
-            for b in partition
+            block_map[b]: [block_map[c] for c in candidate_pools[b]] for b in partition
         }
         score_tau = [block_map[b] for b in tau]
     else:
@@ -260,8 +269,14 @@ class COARSE:
         partition = infer_partition(M)
 
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
-            partition, M, env_arrays, lambda_pen, rng_gs,
-            k=k, baseline_key=baseline_key, avg=avg,
+            partition,
+            M,
+            env_arrays,
+            lambda_pen,
+            rng_gs,
+            k=k,
+            baseline_key=baseline_key,
+            avg=avg,
         )
 
         dag = _materialize_dag(partition, parent_sets)
@@ -344,14 +359,45 @@ class COARSEOracle:
                 f"env_order has {len(env_order)} entries; M has {M.shape[1]} columns"
             )
         canonical = infer_partition(M)
-        if set(partition) != set(canonical):
-            raise ValueError("partition must be the row-class partition of M")
-        # Canonical order, so τ ignores the caller's order.
-        partition = canonical
+        if set(partition) == set(canonical):
+            partition = canonical
+        else:
+            # A refinement of the row classes is legitimate score-phase input: a
+            # size-capped merge may split a signature class into several blocks with
+            # identical supports (which can never be ordered by signature, so τ and
+            # the pool filter decide direction). Refinements must still be disjoint,
+            # cover every variable, and carry a constant signature per block.
+            partition = [frozenset(blk) for blk in partition]
+            seen: set[int] = set()
+            for blk in partition:
+                rows = sorted(blk)
+                if not rows or seen.intersection(rows):
+                    raise ValueError(
+                        "partition blocks must be nonempty, disjoint, and cover every variable"
+                    )
+                seen.update(rows)
+                block_M = M[rows]
+                if not bool((block_M == block_M[0]).all()):
+                    raise ValueError("every block must have a constant signature in M")
+            if seen != set(range(p)):
+                raise ValueError(
+                    "partition blocks must be nonempty, disjoint, and cover every variable"
+                )
+            # Canonical order, so τ ignores the caller's order.
+            partition = sorted(
+                partition,
+                key=lambda blk: (int(M[min(blk), :].sum()), min(blk)),
+            )
         rng_gs = self.rng.spawn(1)[0]
         supports, candidate_pools, tau, parent_sets, score = _run_score_phase(
-            partition, M, env_arrays, lambda_pen, rng_gs,
-            k=k, baseline_key=baseline_key, avg=avg,
+            partition,
+            M,
+            env_arrays,
+            lambda_pen,
+            rng_gs,
+            k=k,
+            baseline_key=baseline_key,
+            avg=avg,
         )
         dag = _materialize_dag(partition, parent_sets)
 

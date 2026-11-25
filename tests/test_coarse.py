@@ -98,13 +98,22 @@ def test_compute_M_columns_follow_env_order():
 def test_compute_M_other_tests():
     """gaussian_lrt, energy and case-insensitive names detect a mean shift; energy is seeded."""
     rng = np.random.default_rng(0)
-    data_dict = {"obs": rng.standard_normal((150, 2)), "1": rng.standard_normal((150, 2))}
+    data_dict = {
+        "obs": rng.standard_normal((150, 2)),
+        "1": rng.standard_normal((150, 2)),
+    }
     data_dict["1"][:, 0] += 3.0
     expected = [[True], [False]]
     for name in ("gaussian_lrt", "WELCH", "Ks"):
-        assert compute_M(data_dict, alpha=1e-3, test_name=name)[0].tolist() == expected, name
-    M_a, _ = compute_M(data_dict, alpha=1e-2, test_name="energy", rng=np.random.default_rng(1))
-    M_b, _ = compute_M(data_dict, alpha=1e-2, test_name="energy", rng=np.random.default_rng(1))
+        assert (
+            compute_M(data_dict, alpha=1e-3, test_name=name)[0].tolist() == expected
+        ), name
+    M_a, _ = compute_M(
+        data_dict, alpha=1e-2, test_name="energy", rng=np.random.default_rng(1)
+    )
+    M_b, _ = compute_M(
+        data_dict, alpha=1e-2, test_name="energy", rng=np.random.default_rng(1)
+    )
     assert M_a.tolist() == M_b.tolist() == expected
 
 
@@ -128,7 +137,11 @@ def test_normalize_env_data_forms():
     for value in ({"data": X}, (X, {0}, "soft"), X):
         arr = _normalize_env_data(value)
         assert arr.dtype == np.float64 and arr.shape == (3, 2)
-    for bad, match in (({"targets": {0}}, "'data'"), ((), "empty"), (np.arange(4.0), "2-D")):
+    for bad, match in (
+        ({"targets": {0}}, "'data'"),
+        ((), "empty"),
+        (np.arange(4.0), "2-D"),
+    ):
         with pytest.raises(ValueError, match=match):
             _normalize_env_data(bad)
 
@@ -174,7 +187,10 @@ def test_infer_partition_order_and_permutation_invariance():
     base = set(infer_partition(_M_HANDCODED))
     for _ in range(5):
         perm = rng.permutation(_M_HANDCODED.shape[0])
-        relabeled = {frozenset(int(perm[v]) for v in b) for b in infer_partition(_M_HANDCODED[perm])}
+        relabeled = {
+            frozenset(int(perm[v]) for v in b)
+            for b in infer_partition(_M_HANDCODED[perm])
+        }
         assert relabeled == base
 
 
@@ -190,7 +206,10 @@ def test_block_bic_minus_inf_branches():
     assert _block_bic_env_from_sigma(block, parents, bad_papa, n_e=100) == -np.inf
     bad_jj = pd_sigma.copy()
     bad_jj[0, 0] = -1.0
-    assert _block_bic_env_from_sigma(block, np.array([], dtype=np.int64), bad_jj, n_e=100) == -np.inf
+    assert (
+        _block_bic_env_from_sigma(block, np.array([], dtype=np.int64), bad_jj, n_e=100)
+        == -np.inf
+    )
     assert _block_bic_env_from_sigma(block, parents, pd_sigma, n_e=3) == -np.inf
     assert np.isfinite(_block_bic_env_from_sigma(block, parents, pd_sigma, n_e=4))
 
@@ -229,14 +248,22 @@ def test_pooled_bic_matches_raw_reference():
         for block, parents in configs:
             pa_idx = sorted({i for p in parents for i in p})
             expected = sum(
-                block_bic_env(X[:, sorted(block)], X[:, pa_idx], lambda_pen) for X in centered.values()
+                block_bic_env(X[:, sorted(block)], X[:, pa_idx], lambda_pen)
+                for X in centered.values()
             )
             plain = pooled_block_bic_from_sigma(block, parents, env_stats, lambda_pen)
             np.testing.assert_allclose(plain, expected, rtol=1e-10)
             b_idx = idx_cache[block]
             cached = pooled_block_bic_from_sigma(
-                block, parents, env_stats, lambda_pen, block_idx=b_idx, idx_cache=idx_cache,
-                S_jj_cache={k: s.sigma[np.ix_(b_idx, b_idx)] for k, s in env_stats.items()},
+                block,
+                parents,
+                env_stats,
+                lambda_pen,
+                block_idx=b_idx,
+                idx_cache=idx_cache,
+                S_jj_cache={
+                    k: s.sigma[np.ix_(b_idx, b_idx)] for k, s in env_stats.items()
+                },
             )
             assert cached == plain
 
@@ -260,7 +287,9 @@ def test_grow_shrink_rejects_distractor():
     data = np.column_stack([X0, X1, X2, X3, X4])
     pool = [frozenset({2}), frozenset({3}), frozenset({4})]
     for seed in (0, 1, 7, 123, 2026):
-        parents = grow_shrink(frozenset({0, 1}), pool, {"obs": data}, rng=np.random.default_rng(seed))
+        parents = grow_shrink(
+            frozenset({0, 1}), pool, {"obs": data}, rng=np.random.default_rng(seed)
+        )
         assert set(parents) == {frozenset({2}), frozenset({3})}, seed
 
 
@@ -294,10 +323,12 @@ def test_grow_shrink_control_flow(monkeypatch, table, expected):
     shrink_seen = False
     for seed in range(10):
         scored.clear()
-        parents = grow_shrink(frozenset({0}), pool, {}, env_stats={}, rng=np.random.default_rng(seed))
+        parents = grow_shrink(
+            frozenset({0}), pool, {}, env_stats={}, rng=np.random.default_rng(seed)
+        )
         assert set(parents) == expected, seed
         # {b} scored after {a, b} only when shrink drops a from a grown {a, b}
-        if _A | _B in scored and _B in scored[scored.index(_A | _B):]:
+        if _A | _B in scored and _B in scored[scored.index(_A | _B) :]:
             shrink_seen = True
     if expected == {_B}:
         assert shrink_seen
@@ -318,7 +349,9 @@ def test_oracle_recovers_chain(sizes):
     assert set(model.dag.nodes) == {(0, 1), (2, 3), (4, 5)}
     assert set(model.dag.edges) == CHAIN_EDGES
     centered = {k: v - v.mean(axis=0) for k, v in data_dict.items()}
-    expected = sum(pooled_block_bic(b, model.parent_sets[b], centered) for b in model.partition)
+    expected = sum(
+        pooled_block_bic(b, model.parent_sets[b], centered) for b in model.partition
+    )
     assert model.score == pytest.approx(expected, rel=1e-12)
 
 
@@ -333,7 +366,9 @@ def test_fit_recovers_chain():
 def test_fit_lambda_extremes():
     """A huge penalty selects no parents; zero penalty selects every candidate."""
     data_dict = chain_data_dict(1500, 0)
-    assert COARSE().fit(data_dict, alpha=1e-4, lambda_pen=1e6).dag.number_of_edges() == 0
+    assert (
+        COARSE().fit(data_dict, alpha=1e-4, lambda_pen=1e6).dag.number_of_edges() == 0
+    )
     full = COARSE().fit(data_dict, alpha=1e-4, lambda_pen=0.0)
     for block, parents in full.parent_sets.items():
         assert set(parents) == set(full.candidate_pools[block]), block
@@ -366,10 +401,15 @@ def test_coarse_oracle_canonicalises_partition_order():
 
 
 def test_coarse_oracle_rejects_inconsistent_inputs():
-    """Partition not from M, M with the wrong row count, env_order of the wrong length."""
+    """Partition not a refinement of M, M with the wrong row count, env_order of the wrong length."""
     data_dict = chain_data_dict(300, 0)
-    with pytest.raises(ValueError, match="row-class partition"):
-        COARSEOracle().fit([frozenset(range(4)), frozenset({4, 5})], CHAIN_M, CHAIN_ENV_ORDER, data_dict)
+    with pytest.raises(ValueError, match="constant signature"):
+        COARSEOracle().fit(
+            [frozenset(range(4)), frozenset({4, 5})],
+            CHAIN_M,
+            CHAIN_ENV_ORDER,
+            data_dict,
+        )
     for rows in (4, 8):
         M = np.zeros((rows, 1), dtype=bool)
         M[:2] = True
@@ -380,10 +420,42 @@ def test_coarse_oracle_rejects_inconsistent_inputs():
         COARSEOracle().fit(infer_partition(M), M, ["1", "2"], data_dict)
 
 
+def test_coarse_oracle_accepts_finer_partition():
+    """A refinement of a row class is valid: same-signature blocks, disjoint, covered,
+    with the DAG kept acyclic and blocks preserved."""
+    import networkx as nx
+
+    data_dict = chain_data_dict(300, 0)
+    finer = [frozenset({0}), frozenset({1}), frozenset({2, 3}), frozenset({4, 5})]
+    model = COARSEOracle(rng=np.random.default_rng(0)).fit(
+        finer, CHAIN_M, CHAIN_ENV_ORDER, data_dict
+    )
+    assert set(map(frozenset, model.partition)) == set(map(frozenset, finer))
+    assert np.isfinite(model.score)
+    assert nx.is_directed_acyclic_graph(model.dag)
+    # Same-signature siblings never parent each other: only τ-earlier blocks do.
+    for child, parents in model.parent_sets.items():
+        for parent in parents:
+            assert model.supports[parent] <= model.supports[child]
+
+
+def test_coarse_oracle_rejects_overlapping_refinement():
+    """A refinement must cover every variable exactly once."""
+    data_dict = chain_data_dict(300, 0)
+    with pytest.raises(ValueError, match="disjoint"):
+        COARSEOracle().fit(
+            [frozenset({0}), frozenset({0, 1}), frozenset({2, 3}), frozenset({4, 5})],
+            CHAIN_M,
+            CHAIN_ENV_ORDER,
+            data_dict,
+        )
+
+
 def _set(col, value, envs=("1",)):
     def corrupt(d):
         for e in envs:
             d[e][:, col] = value(d[e])
+
     return corrupt
 
 
@@ -400,7 +472,14 @@ _ALL = ("obs", "1", "2", "3")
         (_set(1, lambda X: 2.0 * X[:, 0], _ALL), "linearly dependent"),
         (_set(2, lambda X: 2.0 * X[:, 3] + 3.0, _ALL), "linearly dependent"),
     ],
-    ids=["nan", "one_row", "constant", "identical", "dependent_block", "dependent_parents"],
+    ids=[
+        "nan",
+        "one_row",
+        "constant",
+        "identical",
+        "dependent_block",
+        "dependent_parents",
+    ],
 )
 def test_check_input_rejects_bad_data(corrupt, match):
     data_dict = chain_data_dict(300, 0)
@@ -424,8 +503,10 @@ def test_check_input_gates_data_validation(cls, monkeypatch):
     calls = []
     monkeypatch.setattr(coarse_mod, "_check_data_dict", lambda d: calls.append(d))
     data_dict = chain_data_dict(300, 0)
-    fit = (lambda **kw: COARSE().fit(data_dict, **kw)) if cls == "COARSE" else (
-        lambda **kw: _oracle(data_dict, **kw)
+    fit = (
+        (lambda **kw: COARSE().fit(data_dict, **kw))
+        if cls == "COARSE"
+        else (lambda **kw: _oracle(data_dict, **kw))
     )
     fit()
     assert calls == []
@@ -436,7 +517,10 @@ def test_check_input_gates_data_validation(cls, monkeypatch):
 def test_fit_rejects_bad_hyperparameters():
     """k not a positive int, alpha outside (0, 1), negative λ, avg together with k."""
     data_dict = chain_data_dict(200, 0)
-    fits = (lambda **kw: COARSE().fit(data_dict, **kw), lambda **kw: _oracle(data_dict, **kw))
+    fits = (
+        lambda **kw: COARSE().fit(data_dict, **kw),
+        lambda **kw: _oracle(data_dict, **kw),
+    )
     for fit in fits:
         for k in (0, -1, 1.5, True):
             with pytest.raises(ValueError, match="k must be"):
@@ -452,7 +536,9 @@ def test_fit_rejects_bad_hyperparameters():
 
 def test_fit_custom_baseline_key():
     """A non-"obs" baseline works plain and with k; the default key then raises."""
-    data_dict = {("ctrl" if k == "obs" else k): v for k, v in chain_data_dict(1500, 0).items()}
+    data_dict = {
+        ("ctrl" if k == "obs" else k): v for k, v in chain_data_dict(1500, 0).items()
+    }
     plain = COARSE().fit(data_dict, alpha=1e-4, baseline_key="ctrl")
     assert plain.env_order == CHAIN_ENV_ORDER
     assert set(plain.dag.edges) == CHAIN_EDGES
@@ -465,7 +551,9 @@ def test_fit_custom_baseline_key():
 def test_fit_trivial_inputs():
     """One variable, and no interventional env: a single-block, edgeless, finite fit."""
     rng = np.random.default_rng(0)
-    one_var = COARSE().fit({"obs": rng.standard_normal((200, 1)), "1": 2.0 + rng.standard_normal((200, 1))})
+    one_var = COARSE().fit(
+        {"obs": rng.standard_normal((200, 1)), "1": 2.0 + rng.standard_normal((200, 1))}
+    )
     assert list(one_var.dag.nodes) == [(0,)]
     obs_only = COARSE().fit({"obs": sample_chain_dataset(500, rng)})
     assert obs_only.M.shape == (6, 0)
@@ -545,8 +633,13 @@ def test_avg_matches_plain_on_block_means():
 def test_kpc_project_blocks_clamps_to_svd_rank():
     """With fewer obs rows than k, k_j is the SVD rank and blocks stay contiguous."""
     rng = np.random.default_rng(0)
-    env_arrays = {"obs": rng.standard_normal((2, 8)), "1": rng.standard_normal((100, 8))}
+    env_arrays = {
+        "obs": rng.standard_normal((2, 8)),
+        "1": rng.standard_normal((100, 8)),
+    }
     partition = [frozenset({0, 1, 2, 3}), frozenset({4, 5, 6, 7})]
-    proj_arrays, proj_partition, _ = _project_blocks(partition, env_arrays, k=3, baseline_key="obs")
+    proj_arrays, proj_partition, _ = _project_blocks(
+        partition, env_arrays, k=3, baseline_key="obs"
+    )
     assert proj_partition == [frozenset({0, 1}), frozenset({2, 3})]
     assert all(arr.shape[1] == 4 for arr in proj_arrays.values())
