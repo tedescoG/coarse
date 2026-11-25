@@ -14,11 +14,22 @@
 
 # snakemake experiments
 /src/expt/.snakemake/
+/src/expt/.ruff_cache/
 # per-cell data and fits, smoke runs and logs; collected CSVs and figures are tracked
 /src/expt/results/_data/
 /src/expt/results/_run/
 /src/expt/results/smoke/
 /src/expt/results/causalchamber/preprocessed/
+/src/expt/results/perturbseq/preprocessed/
+/src/expt/results/perturbseq-smoke/
+/src/expt/results/perturbseq-cells/
+/src/expt/results/perturbseq-cells-40/
+/src/expt/results/perturbseq-cells-compare/
+/src/expt/results/perturbseq-cells-compare-40/
+/src/expt/results/perturbseq-cells-*/preprocessed/
+/src/expt/results/perturbseq-cells-*/summary.json
+/src/expt/results/perturbseq-cells-compare-*/split_*/
+/src/expt/results/perturbseq-smoke_summary.csv
 /src/expt/results/*.log
 /src/expt/logs/
 /src/expt/data/
@@ -26,3 +37,14 @@
 # editor / OS
 .idea/
 .DS_Store
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml

@@ -31,6 +31,7 @@ packages = ["src/coarse"]
 
 [dependency-groups]
 expt = [
+    "anndata>=0.11",
     "causalchamber>=0.2.8",
     "causaldag>=0.1a163",
     "conditional-independence>=0.1a6",
