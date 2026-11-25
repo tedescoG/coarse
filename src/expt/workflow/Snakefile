@@ -1,3 +1,5 @@
+import os
+
 wildcard_constraints:
     graph="er|sf",
     num_nodes=r"\d+",
@@ -23,11 +25,22 @@ include: "rules/threshold_correction.smk"
 include: "rules/multitarget.smk"
 include: "rules/highdim.smk"
 include: "rules/causalchamber.smk"
+include: "rules/perturbseq.smk"
+
+# One BLAS thread per job: snakemake parallelism is across jobs, and oversubscribed
+# BLAS pools make per-fit timings (and the runtime diagnostics) meaningless.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 
 # Targets: densities_all, scalability_all, noise_all, methods_compare_all, lambda_sens_all,
-# threshold_correction_all, multitarget_all, highdim_all, causalchamber, coarse_all, all. Put
-# targets before `--config`.
+# threshold_correction_all, multitarget_all, highdim_all, causalchamber, battery_all,
+# rebuttal_all, coarse_all, all. Put targets before `--config`.
+# Perturb-seq scaling ladder: `snakemake results/perturbseq-scaling-figure.pdf` builds
+# every missing ladder leg and the figure; brace targets address individual panels,
+# e.g. `snakemake results/perturbseq-cells-compare-{200,500}/summary.csv`.
 rule coarse_all:
     input:
         rules.densities_all.input,
@@ -50,3 +63,26 @@ rule all:
         rules.multitarget_all.input,
         rules.highdim_all.input,
         rules.causalchamber.input,
+
+
+# Everything the new-experiments document quotes: the Perturb-seq ladder legs
+# (summary + presentation table + diagnostics), the intervention-prediction table,
+# the UT-IGSP tuning-grid artifact backing the stability claim, and the scaling
+# figure. `snakemake new_expts` builds any missing pieces; the fits are CPU-heavy,
+# so this target is deliberately separate from `all`.
+rule new_expts:
+    input:
+        "results/perturbseq-scaling-figure.pdf",
+        expand(
+            "results/perturbseq-cells-compare-{panel}/{stem}",
+            panel=["50", "100", "200", "500"],
+            stem=[
+                "summary.csv",
+                "details.json",
+                "table.csv",
+                "table.tex",
+                "diagnostics.csv",
+                "utigsp_grid.csv",
+            ],
+        ),
+        "results/perturbseq-shiftpred-table.tex",
